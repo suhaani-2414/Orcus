@@ -71,8 +71,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Multimodal OS Controller (Stage 1)")
     parser.add_argument("--execute", action="store_true", help="run real OS actions")
     parser.add_argument(
-        "--input", choices=["demo", "gesture"], default="demo",
-        help="demo = replay mock events; gesture = live webcam swipes",
+        "--input", choices=["demo", "gesture", "voice"], default="demo",
+        help="demo = replay mock events; gesture = live webcam swipes; "
+        "voice = ElevenLabs Scribe push-to-talk",
     )
     parser.add_argument(
         "--engine", choices=["rules", "laya"], default="rules",
@@ -101,6 +102,11 @@ def main() -> None:
 
         print("Swipe left/right to change workspace. Press q in the window to quit.\n")
         source = GestureInput()
+    elif args.input == "voice":
+        from controller.inputs.voice import ScribeRecognizer, VoiceInput
+
+        print("Voice mode (ElevenLabs Scribe). Speak a command after pressing Enter.\n")
+        source = VoiceInput(ScribeRecognizer())
     else:
         # The OUTLINE's first vertical slice, plus one of each other modality.
         source = MockInput([
