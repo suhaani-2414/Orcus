@@ -34,7 +34,9 @@ class SpeechRecognizer(ABC):
 def _record_wav(path: str, seconds: float) -> None:
     """Record mono 16 kHz WAV using whatever recorder is available."""
     if shutil.which("arecord"):
-        cmd = ["arecord", "-q", "-d", str(seconds), "-f", "S16_LE", "-r", "16000", "-c", "1", path]
+        # arecord -d takes whole seconds only.
+        cmd = ["arecord", "-q", "-d", str(round(seconds)), "-f", "S16_LE",
+               "-r", "16000", "-c", "1", path]
     elif shutil.which("ffmpeg"):
         cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "pulse",
                "-i", "default", "-t", str(seconds), "-ar", "16000", "-ac", "1", "-y", path]
