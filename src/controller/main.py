@@ -46,12 +46,14 @@ def build_engine(config: dict, use_laya: bool):
 
     from controller.decision.composite import CompositeEngine
     from controller.decision.laya import LayaDecisionEngine
-    from controller.decision.laya_loader import load_laya_client
+    from controller.decision.laya_loader import FINETUNED_DIR, load_laya_client
 
-    print("Loading Laya (first run downloads the checkpoint)...")
-    # allow_none=False: the zero-shot base checkpoint over-picks "none"; the
-    # policy confidence threshold rejects unrelated speech instead.
-    laya = LayaDecisionEngine(load_laya_client(), allow_none=False)
+    # The fine-tuned checkpoint learned to abstain, so it can use the "none"
+    # option; the zero-shot base over-picks "none", so it relies on the policy
+    # confidence threshold instead.
+    finetuned = (FINETUNED_DIR / "model.safetensors").exists()
+    print(f"Loading Laya ({'fine-tuned' if finetuned else 'base'})...")
+    laya = LayaDecisionEngine(load_laya_client(), allow_none=finetuned)
     return CompositeEngine([laya, rules])
 
 
