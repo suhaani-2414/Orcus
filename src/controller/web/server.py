@@ -13,6 +13,7 @@ Run:  python -m controller.web        (serves http://127.0.0.1:8000)
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -41,6 +42,8 @@ _DEMO_EVENTS = [
 
 _clients: set[WebSocket] = set()
 _latest: dict = {}
+# Recent entries, replayed to a newly opened tab so its event log isn't empty.
+_history: deque[dict] = deque(maxlen=25)
 
 
 class _DryRun(OSController):
@@ -78,7 +81,9 @@ async def _demo_loop() -> None:
     while True:
         for event in _DEMO_EVENTS:
             pipeline.handle(event)          # observer fills _latest
-            await _broadcast(dict(_latest))
+            entry = dict(_latest)
+            _history.append(entry)
+            await _broadcast(entry)
             await asyncio.sleep(1.8)
 
 
@@ -102,8 +107,8 @@ async def index() -> FileResponse:
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
     _clients.add(websocket)
-    if _latest:  # send current state immediately so a fresh tab isn't blank
-        await websocket.send_json(dict(_latest))
+    if _history:  # replay recent entries so a fresh tab isn't blank
+        await websocket.send_json({"kind": "history", "entries": list(_history)})
     try:
         while True:
             await websocket.receive_text()  # keep the socket open
