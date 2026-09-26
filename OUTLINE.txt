@@ -1,0 +1,1063 @@
+# Project: Multimodal Cross-Platform OS Controller
+
+Build a local-first multimodal operating-system control framework that allows users to control their computer through multiple input modalities:
+
+1. Voice commands
+2. Hand gestures
+3. Keyboard/mouse events
+4. Eventually head movement, gaze, custom sensors, and other modalities
+
+The application must support **Linux and macOS as first-class platforms**.
+
+Initial Linux target:
+
+* Arch Linux
+* Hyprland
+* PipeWire
+
+Initial macOS target:
+
+* macOS
+* Native macOS Accessibility APIs
+* AppleScript / Shortcuts where appropriate
+* Native application and window-management interfaces where available
+
+The system should convert every input modality into a common structured intent and then safely execute that intent through a platform-specific OS adapter.
+
+---
+
+# Core Architecture
+
+The fundamental architecture is:
+
+```text
+                 ┌─────────────────────┐
+                 │    Voice Input      │
+                 └──────────┬──────────┘
+                            │
+                 ┌──────────▼──────────┐
+                 │ Speech Recognition  │
+                 └──────────┬──────────┘
+                            │
+                            │
+┌──────────────┐      ┌─────▼─────┐      ┌───────────────┐
+│ Hand Camera  │ ───► │ Normalize │ ◄─── │ Keyboard/Mouse │
+└──────────────┘      └─────┬─────┘      └───────────────┘
+                            │
+                            ▼
+                  ┌──────────────────┐
+                  │ Laya Decision    │
+                  │ Model            │
+                  └────────┬─────────┘
+                           │
+                           ▼
+                  Structured Intent
+                           │
+                           ▼
+                  ┌──────────────────┐
+                  │ Policy / Safety  │
+                  │ Layer            │
+                  └────────┬─────────┘
+                           │
+                    ┌──────▼──────┐
+                    │ OS Adapter  │
+                    └──────┬──────┘
+                           │
+                 ┌─────────┴─────────┐
+                 ▼                   ▼
+             Linux                macOS
+                 │                   │
+             Hyprland           Accessibility
+             PipeWire           AppleScript
+             D-Bus              Shortcuts
+             playerctl           Native APIs
+```
+
+The **input, decision, intent, policy, logging, and action-definition layers must remain platform-independent**.
+
+Only the final execution layer should contain OS-specific implementation.
+
+---
+
+# Core Design Principle
+
+Laya is the **decision layer**, not the OS execution layer.
+
+Never allow Laya or another model to generate arbitrary shell commands and execute them.
+
+Instead, Laya chooses from a predefined action vocabulary and produces strongly validated structured intents.
+
+Example:
+
+```json
+{
+  "action": "switch_workspace",
+  "parameters": {
+    "workspace": 3
+  },
+  "confidence": 0.98
+}
+```
+
+The OS adapter determines how that intent is executed.
+
+Linux might use Hyprland IPC.
+
+macOS might use the appropriate macOS workspace/window-management mechanism.
+
+Laya should not know or care which operating system is executing the intent.
+
+---
+
+# Platform Architecture
+
+Use an abstraction similar to:
+
+```python
+class OSController:
+    def execute(self, intent):
+        raise NotImplementedError
+```
+
+Then implement:
+
+```text
+os/
+├── base.py
+│
+├── linux/
+│   ├── controller.py
+│   ├── hyprland.py
+│   ├── audio.py
+│   ├── media.py
+│   ├── applications.py
+│   └── windows.py
+│
+└── macos/
+    ├── controller.py
+    ├── accessibility.py
+    ├── audio.py
+    ├── media.py
+    ├── applications.py
+    └── windows.py
+```
+
+The application should select the correct implementation at runtime.
+
+For example:
+
+```python
+controller = get_os_controller()
+controller.execute(intent)
+```
+
+Do not scatter OS checks throughout the application.
+
+Avoid architecture such as:
+
+```python
+if linux:
+    ...
+elif macos:
+    ...
+```
+
+throughout unrelated modules.
+
+---
+
+# Supported Actions
+
+Initially define a finite action registry:
+
+```python
+ACTIONS = {
+    "open_app",
+    "close_app",
+    "focus_window",
+    "move_window",
+    "resize_window",
+    "switch_workspace",
+    "next_workspace",
+    "previous_workspace",
+    "play_pause",
+    "next_track",
+    "previous_track",
+    "volume_up",
+    "volume_down",
+    "mute",
+    "lock_screen"
+}
+```
+
+Each action must define:
+
+* name
+* description
+* required parameters
+* parameter validation
+* confidence requirements
+* execution method
+* supported platforms
+
+For example:
+
+```text
+switch_workspace
+├── Linux: supported
+└── macOS: supported
+
+mute
+├── Linux: supported
+└── macOS: supported
+
+hyprland_specific_action
+├── Linux: supported
+└── macOS: unsupported
+```
+
+If an action is unavailable on the current platform, return a structured unsupported-action result instead of failing unpredictably.
+
+---
+
+# Input Normalization
+
+Every input source must produce a normalized event.
+
+Voice:
+
+```json
+{
+  "type": "voice",
+  "text": "switch to workspace three"
+}
+```
+
+Gesture:
+
+```json
+{
+  "type": "gesture",
+  "name": "swipe_right",
+  "confidence": 0.95
+}
+```
+
+Keyboard:
+
+```json
+{
+  "type": "keyboard",
+  "key": "MEDIA_PLAY_PAUSE"
+}
+```
+
+The rest of the system should not need to know where the event originated.
+
+---
+
+# Voice Input
+
+Implement a replaceable speech-recognition interface:
+
+```python
+class SpeechRecognizer:
+    def start(self):
+        ...
+
+    def listen(self):
+        ...
+
+    def stop(self):
+        ...
+```
+
+The initial implementation should support local speech recognition where practical.
+
+The speech layer should only produce text.
+
+It should not execute OS commands itself.
+
+Pipeline:
+
+```text
+Microphone
+    ↓
+Speech Recognition
+    ↓
+Text
+    ↓
+Normalized Event
+    ↓
+Laya
+```
+
+Example:
+
+```text
+"Open Firefox"
+```
+
+becomes:
+
+```json
+{
+  "type": "voice",
+  "text": "Open Firefox"
+}
+```
+
+---
+
+# Hand Gesture Input
+
+Use MediaPipe Hands.
+
+Initially support:
+
+```text
+swipe_left
+swipe_right
+thumbs_up
+thumbs_down
+open_palm
+fist
+```
+
+Create a clean interface:
+
+```python
+class GestureRecognizer:
+    def start(self):
+        ...
+
+    def get_event(self):
+        ...
+```
+
+Output:
+
+```json
+{
+  "type": "gesture",
+  "name": "swipe_left",
+  "confidence": 0.94
+}
+```
+
+The gesture system must not contain Linux or macOS execution logic.
+
+---
+
+# Laya Decision Layer
+
+Create a model abstraction:
+
+```python
+class DecisionEngine:
+    def decide(self, event):
+        ...
+```
+
+Implement:
+
+```python
+class LayaDecisionEngine(DecisionEngine):
+    ...
+```
+
+Laya should map normalized inputs into strongly typed intents.
+
+Example:
+
+```json
+{
+  "action": "open_app",
+  "parameters": {
+    "application": "firefox"
+  },
+  "confidence": 0.97
+}
+```
+
+Another:
+
+```json
+{
+  "action": "volume_up",
+  "parameters": {
+    "amount": 10
+  },
+  "confidence": 0.93
+}
+```
+
+The rest of the application should depend on `DecisionEngine`, not directly on Laya.
+
+This allows future replacement with another model.
+
+---
+
+# Policy / Safety Layer
+
+Never execute model output directly.
+
+Every intent must pass through:
+
+```text
+Laya
+ ↓
+Intent validation
+ ↓
+Policy
+ ↓
+OS Controller
+```
+
+The policy layer must:
+
+1. Verify the action exists.
+2. Validate parameters.
+3. Check confidence.
+4. Reject malformed intents.
+5. Reject unsupported actions.
+6. Prevent arbitrary command execution.
+7. Log the decision.
+8. Require confirmation for potentially destructive actions.
+
+Never support model-generated:
+
+```text
+run_shell_command
+execute_command
+sudo
+delete_file
+format_disk
+```
+
+as unrestricted actions.
+
+If shell commands are required internally, they must be hard-coded by the platform adapter rather than generated by the model.
+
+---
+
+# Linux Adapter
+
+Support:
+
+* Arch Linux
+* Hyprland
+* PipeWire
+
+Use appropriate Linux interfaces:
+
+* Hyprland IPC / `hyprctl`
+* PipeWire / `wpctl`
+* `playerctl`
+* D-Bus
+* application launchers
+* native Linux APIs where appropriate
+
+Examples:
+
+```text
+switch_workspace
+→ Hyprland
+
+volume_up
+→ PipeWire / wpctl
+
+next_track
+→ playerctl
+
+open_app
+→ desktop/application launcher
+```
+
+Do not make the core architecture dependent on Hyprland.
+
+Hyprland should be an implementation of the Linux window-manager adapter.
+
+Eventually allow:
+
+```text
+Linux
+├── Hyprland
+├── GNOME
+└── KDE
+```
+
+without changing the decision system.
+
+---
+
+# macOS Adapter
+
+Support macOS as a first-class platform.
+
+Use appropriate macOS-native mechanisms such as:
+
+* Accessibility APIs
+* AppleScript
+* Shortcuts
+* application launching
+* native window-management mechanisms
+* media-control APIs where available
+* macOS audio controls
+
+Examples:
+
+```text
+open_app
+→ macOS application launching
+
+focus_window
+→ Accessibility APIs
+
+window movement
+→ Accessibility APIs / supported window-management mechanism
+
+media control
+→ appropriate macOS media interface
+
+volume
+→ native macOS audio-control mechanism
+
+lock_screen
+→ appropriate macOS system interface
+```
+
+The macOS implementation should not simply execute Linux commands through compatibility layers.
+
+Use native macOS mechanisms where practical.
+
+If macOS requires user-granted Accessibility permissions, detect the missing permission and provide a clear error explaining what permission is required.
+
+Never attempt to bypass macOS security controls.
+
+---
+
+# Cross-Platform Intent Example
+
+Input:
+
+```text
+"Switch to workspace three."
+```
+
+Laya:
+
+```json
+{
+  "action": "switch_workspace",
+  "parameters": {
+    "workspace": 3
+  },
+  "confidence": 0.98
+}
+```
+
+Linux:
+
+```text
+Intent
+ ↓
+LinuxController
+ ↓
+HyprlandController
+ ↓
+Workspace 3
+```
+
+macOS:
+
+```text
+Intent
+ ↓
+MacOSController
+ ↓
+macOS workspace implementation
+ ↓
+Space 3
+```
+
+The intent remains identical.
+
+---
+
+# Cross-Platform Gesture Example
+
+User performs:
+
+```text
+Swipe Right
+```
+
+Gesture recognition:
+
+```json
+{
+  "type": "gesture",
+  "name": "swipe_right",
+  "confidence": 0.95
+}
+```
+
+Decision:
+
+```json
+{
+  "action": "next_workspace",
+  "confidence": 0.95
+}
+```
+
+Linux:
+
+```text
+next_workspace
+→ Hyprland
+```
+
+macOS:
+
+```text
+next_workspace
+→ macOS Spaces
+```
+
+The gesture recognizer remains unchanged.
+
+---
+
+# Multimodal Fusion
+
+Eventually support multiple simultaneous inputs.
+
+Example:
+
+```text
+Voice:
+"Next"
+
+Gesture:
+Swipe Right
+```
+
+Create a future fusion layer capable of determining whether multiple events represent:
+
+* one combined command
+* separate commands
+* conflicting commands
+* ambiguous input
+
+Do not implement complex multimodal fusion until individual input pipelines are stable.
+
+---
+
+# Project Structure
+
+Use:
+
+```text
+multimodal-os-controller/
+│
+├── README.md
+├── pyproject.toml
+├── .gitignore
+│
+├── config/
+│   └── config.yaml
+│
+├── src/
+│   └── controller/
+│       │
+│       ├── main.py
+│       │
+│       ├── inputs/
+│       │   ├── base.py
+│       │   ├── voice.py
+│       │   ├── gestures.py
+│       │   └── keyboard.py
+│       │
+│       ├── decision/
+│       │   ├── base.py
+│       │   ├── laya.py
+│       │   └── schemas.py
+│       │
+│       ├── policy/
+│       │   ├── validator.py
+│       │   └── permissions.py
+│       │
+│       ├── actions/
+│       │   ├── registry.py
+│       │   ├── media.py
+│       │   ├── volume.py
+│       │   ├── applications.py
+│       │   └── workspace.py
+│       │
+│       ├── os/
+│       │   ├── base.py
+│       │   ├── factory.py
+│       │   │
+│       │   ├── linux/
+│       │   │   ├── controller.py
+│       │   │   ├── hyprland.py
+│       │   │   ├── audio.py
+│       │   │   └── media.py
+│       │   │
+│       │   └── macos/
+│       │       ├── controller.py
+│       │       ├── accessibility.py
+│       │       ├── audio.py
+│       │       └── media.py
+│       │
+│       ├── logging/
+│       │   └── audit.py
+│       │
+│       └── ui/
+│           └── ...
+│
+├── tests/
+│   ├── test_decision.py
+│   ├── test_policy.py
+│   ├── test_actions.py
+│   ├── test_gestures.py
+│   ├── test_linux.py
+│   └── test_macos.py
+│
+└── scripts/
+    └── ...
+```
+
+---
+
+# Development Strategy
+
+Do not build everything simultaneously.
+
+## Stage 1 — Platform-independent core
+
+Implement:
+
+* Event schemas
+* Intent schemas
+* Action registry
+* DecisionEngine interface
+* Policy layer
+* OSController interface
+* logging
+* platform detection
+
+Use mocked inputs.
+
+Example:
+
+```python
+event = {
+    "type": "voice",
+    "text": "switch to workspace three"
+}
+```
+
+Do not require Laya yet.
+
+---
+
+# Stage 2 — OS Adapters
+
+Implement both:
+
+```text
+Linux / Hyprland
+macOS
+```
+
+Start with a small identical action set:
+
+```text
+open_app
+volume_up
+volume_down
+mute
+play_pause
+next_track
+previous_track
+switch_workspace
+```
+
+Each action should have platform-specific tests.
+
+---
+
+# Stage 3 — Laya
+
+Integrate Laya behind the `DecisionEngine` interface.
+
+Prove:
+
+```text
+Input
+ ↓
+Laya
+ ↓
+Intent
+ ↓
+Policy
+ ↓
+Correct platform adapter
+ ↓
+OS action
+```
+
+---
+
+# Stage 4 — Voice
+
+Add speech recognition.
+
+Test:
+
+```text
+Linux:
+speech → text → Laya → intent → policy → Hyprland/Linux
+
+macOS:
+speech → text → Laya → intent → policy → macOS
+```
+
+The voice code should remain identical between platforms wherever possible.
+
+---
+
+# Stage 5 — MediaPipe Gestures
+
+Add:
+
+```text
+Camera
+ ↓
+MediaPipe
+ ↓
+Gesture
+ ↓
+Laya
+ ↓
+Intent
+ ↓
+Platform Adapter
+ ↓
+OS
+```
+
+Test the same gestures on both operating systems.
+
+---
+
+# Stage 6 — Multimodal Fusion
+
+Only after voice and gesture control work independently should multimodal fusion be introduced.
+
+---
+
+# Configuration
+
+Mappings should be configurable.
+
+Example:
+
+```yaml
+gestures:
+  swipe_left:
+    action: previous_workspace
+
+  swipe_right:
+    action: next_workspace
+
+  open_palm:
+    action: play_pause
+```
+
+Allow platform-specific overrides where necessary:
+
+```yaml
+platforms:
+  linux:
+    workspace_manager: hyprland
+
+  macos:
+    workspace_manager: native_spaces
+```
+
+---
+
+# UI
+
+Eventually create a lightweight desktop UI showing:
+
+```text
+┌───────────────────────────────────────────┐
+│ Multimodal OS Controller                  │
+├───────────────────────────────────────────┤
+│ Platform: Linux / Hyprland                │
+│ Status: Listening                         │
+│                                           │
+│ Last Input                                │
+│ "switch to workspace three"               │
+│                                           │
+│ Decision                                  │
+│ switch_workspace                          │
+│ confidence: 98%                           │
+│                                           │
+│ Execution                                 │
+│ Workspace 3                               │
+│                                           │
+│ Status: Success                            │
+└───────────────────────────────────────────┘
+```
+
+The UI should work on both Linux and macOS.
+
+---
+
+# Logging
+
+Every action should generate a structured audit record:
+
+```json
+{
+  "timestamp": "...",
+  "platform": "linux",
+  "input_type": "voice",
+  "raw_input": "switch to workspace three",
+  "decision": "switch_workspace",
+  "parameters": {
+    "workspace": 3
+  },
+  "confidence": 0.98,
+  "policy": "allowed",
+  "execution": "success"
+}
+```
+
+---
+
+# Cross-Platform Testing
+
+Create a test matrix:
+
+| Capability          | Linux/Hyprland | macOS    |
+| ------------------- | -------------- | -------- |
+| Intent generation   | Required       | Required |
+| Policy validation   | Required       | Required |
+| Open application    | Required       | Required |
+| Volume              | Required       | Required |
+| Media               | Required       | Required |
+| Workspace           | Required       | Required |
+| Window focus        | Required       | Required |
+| Window movement     | Required       | Required |
+| Lock screen         | Required       | Required |
+| Gesture recognition | Shared         | Shared   |
+| Voice recognition   | Shared         | Shared   |
+
+Platform-independent tests should run on every platform.
+
+Platform-specific tests should only execute when the corresponding OS is available.
+
+---
+
+# Engineering Requirements
+
+1. Cross-platform core.
+2. Linux and macOS are first-class platforms.
+3. Arch Linux + Hyprland is the first Linux target.
+4. macOS is the first Apple target.
+5. Keep OS-specific code isolated.
+6. Use native APIs where possible.
+7. Local-first architecture.
+8. Strongly typed intent schemas.
+9. Never execute arbitrary model-generated shell commands.
+10. Validate every model decision.
+11. Handle low-confidence predictions gracefully.
+12. Log decisions and execution results.
+13. Make Laya replaceable.
+14. Make speech recognition replaceable.
+15. Make gesture recognition replaceable.
+16. Make OS backends replaceable.
+17. Write tests before expanding functionality.
+18. Do not bypass OS security or permission mechanisms.
+19. Do not require internet connectivity for basic OS control.
+20. Do not overwrite existing user projects without inspecting them first.
+
+---
+
+# First Vertical Slice
+
+Do not begin by building the GUI.
+
+First create this:
+
+```text
+Mock Input
+    ↓
+Decision Engine
+    ↓
+Structured Intent
+    ↓
+Policy
+    ↓
+OS Controller
+    ↓
+Real OS Action
+```
+
+Implement:
+
+```text
+"volume up"
+```
+
+and:
+
+```text
+"switch workspace 3"
+```
+
+for both supported platforms where the action is technically available.
+
+Then integrate Laya.
+
+Then voice.
+
+Then MediaPipe.
+
+---
+
+# AI Coding Agent Instructions
+
+Act as a senior cross-platform systems engineer.
+
+Before writing substantial code:
+
+1. Inspect the repository.
+2. Detect the current OS.
+3. Detect desktop/window manager where applicable.
+4. Inspect existing code that may be reusable.
+5. Check installed Python/tooling versions.
+6. Check available OS utilities/APIs.
+7. Determine which dependencies are already installed.
+8. Do not overwrite existing files blindly.
+9. Implement one stage at a time.
+10. Run tests after each meaningful change.
+11. Keep platform-independent code separate from platform-specific code.
+12. Document architectural decisions briefly.
+13. Avoid unnecessary dependencies.
+14. Prefer native OS interfaces over brittle automation.
+15. If an API is uncertain, inspect its current documentation rather than guessing.
+
+The final application should be a real runnable cross-platform tool, not a conceptual prototype.
+
+Start by inspecting the repository and environment, then implement **Stage 1: the platform-independent event → intent → policy → OS-controller architecture**.
+
+Do not implement later stages until the Stage 1 architecture is working and tested.
+

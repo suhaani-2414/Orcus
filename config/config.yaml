@@ -1,0 +1,40 @@
+# Multimodal OS Controller — configuration
+#
+# Mappings are platform-independent: an input produces an action name, and the
+# OS adapter decides how to execute it. Keep OS specifics out of this file.
+
+# Reject any decision below this confidence unless the action overrides it.
+min_confidence: 0.7
+
+# Gesture name -> action. The gesture recognizer stays generic; only this map
+# ties a gesture to meaning.
+gestures:
+  swipe_left:
+    action: previous_workspace
+  swipe_right:
+    action: next_workspace
+  open_palm:
+    action: play_pause
+  fist:
+    action: mute
+  thumbs_up:
+    action: volume_up
+  thumbs_down:
+    action: volume_down
+
+# Keyboard key -> action (normalized key names, not raw scancodes).
+keyboard:
+  MEDIA_PLAY_PAUSE:
+    action: play_pause
+  MEDIA_NEXT:
+    action: next_track
+  MEDIA_PREV:
+    action: previous_track
+
+# Optional per-platform hints for adapters. The core never reads these; the
+# adapter for the active platform may.
+platforms:
+  linux:
+    workspace_manager: hyprland
+  macos:
+    workspace_manager: native_spaces

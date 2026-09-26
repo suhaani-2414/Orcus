@@ -1,0 +1,8 @@
+# Fine-tuning deps for the training machine (Mac MPS or NVIDIA CUDA).
+# torch is intentionally left unpinned/uncommented here — install the RIGHT
+# build for the target first (see README.md), THEN `pip install -r` this file.
+laya>=0.3.20
+safetensors
+huggingface_hub
+pydantic>=2.6
+pyyaml>=6.0

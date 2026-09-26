@@ -1,0 +1,207 @@
+{"text": "go to desktop five", "action": "switch_workspace"}
+{"text": "last song", "action": "previous_track"}
+{"text": "get discord going", "action": "open_app"}
+{"text": "mute", "action": "mute"}
+{"text": "move the window left", "action": "move_window"}
+{"text": "close the window", "action": "close_app"}
+{"text": "mute the audio", "action": "mute"}
+{"text": "please launch chrome", "action": "open_app"}
+{"text": "launch kitty", "action": "open_app"}
+{"text": "what's the capital of france", "action": "none"}
+{"text": "switch to the next workspace", "action": "next_workspace"}
+{"text": "move this window", "action": "move_window"}
+{"text": "mute the sound", "action": "mute"}
+{"text": "move to desktop two", "action": "switch_workspace"}
+{"text": "get the music player going", "action": "open_app"}
+{"text": "silence", "action": "mute"}
+{"text": "bump the volume", "action": "volume_up"}
+{"text": "can you open slack", "action": "open_app"}
+{"text": "toggle playback", "action": "play_pause"}
+{"text": "lock it", "action": "lock_screen"}
+{"text": "replay the previous song", "action": "previous_track"}
+{"text": "crank it up", "action": "volume_up"}
+{"text": "bring up kitty", "action": "open_app"}
+{"text": "mute it", "action": "mute"}
+{"text": "switch to desktop 9", "action": "switch_workspace"}
+{"text": "pump up the volume", "action": "volume_up"}
+{"text": "next track", "action": "next_track"}
+{"text": "lock my screen", "action": "lock_screen"}
+{"text": "open up the browser", "action": "open_app"}
+{"text": "move to desktop six", "action": "switch_workspace"}
+{"text": "go to the next track", "action": "next_track"}
+{"text": "what's on my calendar", "action": "none"}
+{"text": "play the song", "action": "play_pause"}
+{"text": "lock the computer", "action": "lock_screen"}
+{"text": "move to the next desktop", "action": "next_workspace"}
+{"text": "run obsidian", "action": "open_app"}
+{"text": "next desktop please", "action": "next_workspace"}
+{"text": "open up vs code", "action": "open_app"}
+{"text": "open vs code", "action": "open_app"}
+{"text": "hit play", "action": "play_pause"}
+{"text": "open discord", "action": "open_app"}
+{"text": "set an alarm for 7 am", "action": "none"}
+{"text": "turn off the sound", "action": "mute"}
+{"text": "start up spotify", "action": "open_app"}
+{"text": "define serendipity", "action": "none"}
+{"text": "show workspace 9", "action": "switch_workspace"}
+{"text": "move to desktop 7", "action": "switch_workspace"}
+{"text": "go to workspace 5", "action": "switch_workspace"}
+{"text": "soften the sound", "action": "volume_down"}
+{"text": "take me to workspace one", "action": "switch_workspace"}
+{"text": "switch to workspace six", "action": "switch_workspace"}
+{"text": "go to desktop 9", "action": "switch_workspace"}
+{"text": "run vs code", "action": "open_app"}
+{"text": "make the window wider", "action": "resize_window"}
+{"text": "turn the volume up", "action": "volume_up"}
+{"text": "volume down", "action": "volume_down"}
+{"text": "exit the application", "action": "close_app"}
+{"text": "pause the music", "action": "play_pause"}
+{"text": "go to workspace 3", "action": "switch_workspace"}
+{"text": "bring up the file manager", "action": "open_app"}
+{"text": "show workspace 7", "action": "switch_workspace"}
+{"text": "order a pizza", "action": "none"}
+{"text": "lower the volume", "action": "volume_down"}
+{"text": "please launch the music player", "action": "open_app"}
+{"text": "take me to workspace three", "action": "switch_workspace"}
+{"text": "close the current app", "action": "close_app"}
+{"text": "bring the volume down", "action": "volume_down"}
+{"text": "go back a workspace", "action": "previous_workspace"}
+{"text": "switch to desktop 6", "action": "switch_workspace"}
+{"text": "raise the volume", "action": "volume_up"}
+{"text": "lock the session", "action": "lock_screen"}
+{"text": "go to workspace one", "action": "switch_workspace"}
+{"text": "take me to workspace eight", "action": "switch_workspace"}
+{"text": "make it quieter", "action": "volume_down"}
+{"text": "tell me a joke", "action": "none"}
+{"text": "increase the volume", "action": "volume_up"}
+{"text": "show workspace 3", "action": "switch_workspace"}
+{"text": "launch the terminal", "action": "open_app"}
+{"text": "go to workspace 9", "action": "switch_workspace"}
+{"text": "put focus on the window", "action": "focus_window"}
+{"text": "jump to workspace 6", "action": "switch_workspace"}
+{"text": "workspace four", "action": "switch_workspace"}
+{"text": "play the music", "action": "play_pause"}
+{"text": "remind me to call mom", "action": "none"}
+{"text": "switch to desktop three", "action": "switch_workspace"}
+{"text": "pause it", "action": "play_pause"}
+{"text": "go back a song", "action": "previous_track"}
+{"text": "pause the video", "action": "play_pause"}
+{"text": "open blender", "action": "open_app"}
+{"text": "next song", "action": "next_track"}
+{"text": "switch to workspace 2", "action": "switch_workspace"}
+{"text": "turn it up", "action": "volume_up"}
+{"text": "take me to workspace 8", "action": "switch_workspace"}
+{"text": "bring up firefox", "action": "open_app"}
+{"text": "louder", "action": "volume_up"}
+{"text": "decrease the volume", "action": "volume_down"}
+{"text": "run the terminal", "action": "open_app"}
+{"text": "please launch discord", "action": "open_app"}
+{"text": "bring up chrome", "action": "open_app"}
+{"text": "move to desktop 6", "action": "switch_workspace"}
+{"text": "what's my schedule tomorrow", "action": "none"}
+{"text": "how are you doing", "action": "none"}
+{"text": "open up obsidian", "action": "open_app"}
+{"text": "can you open discord", "action": "open_app"}
+{"text": "previous workspace", "action": "previous_workspace"}
+{"text": "send an email to john", "action": "none"}
+{"text": "jump to workspace five", "action": "switch_workspace"}
+{"text": "bring up the browser", "action": "open_app"}
+{"text": "go to desktop two", "action": "switch_workspace"}
+{"text": "next tune", "action": "next_track"}
+{"text": "resume the music", "action": "play_pause"}
+{"text": "flip to the next workspace", "action": "next_workspace"}
+{"text": "go to desktop six", "action": "switch_workspace"}
+{"text": "reposition the window", "action": "move_window"}
+{"text": "start steam", "action": "open_app"}
+{"text": "please launch the file manager", "action": "open_app"}
+{"text": "workspace to the left", "action": "previous_workspace"}
+{"text": "start up chrome", "action": "open_app"}
+{"text": "translate hello to french", "action": "none"}
+{"text": "take me to workspace 2", "action": "switch_workspace"}
+{"text": "switch to workspace 7", "action": "switch_workspace"}
+{"text": "play the next song", "action": "next_track"}
+{"text": "fire up the music player", "action": "open_app"}
+{"text": "resize the window", "action": "resize_window"}
+{"text": "who won the game last night", "action": "none"}
+{"text": "run chrome", "action": "open_app"}
+{"text": "next workspace", "action": "next_workspace"}
+{"text": "skip forward", "action": "next_track"}
+{"text": "focus the active window", "action": "focus_window"}
+{"text": "start up firefox", "action": "open_app"}
+{"text": "what's the weather today", "action": "none"}
+{"text": "take me to workspace 3", "action": "switch_workspace"}
+{"text": "make this window smaller", "action": "resize_window"}
+{"text": "open up the terminal", "action": "open_app"}
+{"text": "volume up", "action": "volume_up"}
+{"text": "resize it", "action": "resize_window"}
+{"text": "switch to workspace 6", "action": "switch_workspace"}
+{"text": "close this", "action": "close_app"}
+{"text": "move to desktop seven", "action": "switch_workspace"}
+{"text": "fire up steam", "action": "open_app"}
+{"text": "previous track", "action": "previous_track"}
+{"text": "take me to workspace 5", "action": "switch_workspace"}
+{"text": "workspace to the right", "action": "next_workspace"}
+{"text": "quit this application", "action": "close_app"}
+{"text": "open up the music player", "action": "open_app"}
+{"text": "secure the screen", "action": "lock_screen"}
+{"text": "back one workspace", "action": "previous_workspace"}
+{"text": "skip track", "action": "next_track"}
+{"text": "start up the file manager", "action": "open_app"}
+{"text": "fire up spotify", "action": "open_app"}
+{"text": "go to desktop 4", "action": "switch_workspace"}
+{"text": "screen lock", "action": "lock_screen"}
+{"text": "take me to workspace five", "action": "switch_workspace"}
+{"text": "raise this window", "action": "focus_window"}
+{"text": "bring up slack", "action": "open_app"}
+{"text": "previous desktop", "action": "previous_workspace"}
+{"text": "switch to desktop 3", "action": "switch_workspace"}
+{"text": "show workspace six", "action": "switch_workspace"}
+{"text": "open up slack", "action": "open_app"}
+{"text": "play", "action": "play_pause"}
+{"text": "go to desktop nine", "action": "switch_workspace"}
+{"text": "play the previous track", "action": "previous_track"}
+{"text": "go to workspace 4", "action": "switch_workspace"}
+{"text": "please launch blender", "action": "open_app"}
+{"text": "bring this window to the front", "action": "focus_window"}
+{"text": "bring up the music player", "action": "open_app"}
+{"text": "toggle mute", "action": "mute"}
+{"text": "open chrome", "action": "open_app"}
+{"text": "make the window bigger", "action": "resize_window"}
+{"text": "switch to desktop 8", "action": "switch_workspace"}
+{"text": "resume playback", "action": "play_pause"}
+{"text": "get blender going", "action": "open_app"}
+{"text": "focus the window", "action": "focus_window"}
+{"text": "enlarge the window", "action": "resize_window"}
+{"text": "lock my pc", "action": "lock_screen"}
+{"text": "workspace one", "action": "switch_workspace"}
+{"text": "what's two plus two", "action": "none"}
+{"text": "what time is it", "action": "none"}
+{"text": "open spotify", "action": "open_app"}
+{"text": "workspace two", "action": "switch_workspace"}
+{"text": "please launch steam", "action": "open_app"}
+{"text": "move the window to the right", "action": "move_window"}
+{"text": "launch steam", "action": "open_app"}
+{"text": "fire up slack", "action": "open_app"}
+{"text": "back a track", "action": "previous_track"}
+{"text": "shift the window", "action": "move_window"}
+{"text": "focus on this window", "action": "focus_window"}
+{"text": "close the app", "action": "close_app"}
+{"text": "make it louder", "action": "volume_up"}
+{"text": "search for pasta recipes", "action": "none"}
+{"text": "workspace 4", "action": "switch_workspace"}
+{"text": "launch the file manager", "action": "open_app"}
+{"text": "give focus to the window", "action": "focus_window"}
+{"text": "move it to the other side", "action": "move_window"}
+{"text": "turn it down", "action": "volume_down"}
+{"text": "open up spotify", "action": "open_app"}
+{"text": "switch to desktop one", "action": "switch_workspace"}
+{"text": "run firefox", "action": "open_app"}
+{"text": "go to workspace seven", "action": "switch_workspace"}
+{"text": "turn the volume down", "action": "volume_down"}
+{"text": "go to the next workspace", "action": "next_workspace"}
+{"text": "skip this song", "action": "next_track"}
+{"text": "shrink the window", "action": "resize_window"}
+{"text": "play it", "action": "play_pause"}
+{"text": "launch spotify", "action": "open_app"}
+{"text": "go to workspace 2", "action": "switch_workspace"}
+{"text": "switch to desktop two", "action": "switch_workspace"}

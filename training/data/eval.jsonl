@@ -1,0 +1,37 @@
+{"text": "quieter", "action": "volume_down"}
+{"text": "jump to workspace six", "action": "switch_workspace"}
+{"text": "launch chrome", "action": "open_app"}
+{"text": "lock the screen", "action": "lock_screen"}
+{"text": "move the window", "action": "move_window"}
+{"text": "please launch slack", "action": "open_app"}
+{"text": "shut this app", "action": "close_app"}
+{"text": "run the file manager", "action": "open_app"}
+{"text": "take me to workspace 1", "action": "switch_workspace"}
+{"text": "show workspace one", "action": "switch_workspace"}
+{"text": "can you open steam", "action": "open_app"}
+{"text": "fire up vs code", "action": "open_app"}
+{"text": "fire up the file manager", "action": "open_app"}
+{"text": "close it", "action": "close_app"}
+{"text": "open steam", "action": "open_app"}
+{"text": "can you open the terminal", "action": "open_app"}
+{"text": "switch to the previous workspace", "action": "previous_workspace"}
+{"text": "take me to workspace 4", "action": "switch_workspace"}
+{"text": "previous song", "action": "previous_track"}
+{"text": "go to the last workspace", "action": "previous_workspace"}
+{"text": "workspace six", "action": "switch_workspace"}
+{"text": "move to desktop 5", "action": "switch_workspace"}
+{"text": "how tall is mount everest", "action": "none"}
+{"text": "cut the sound", "action": "mute"}
+{"text": "jump to workspace one", "action": "switch_workspace"}
+{"text": "go to desktop 6", "action": "switch_workspace"}
+{"text": "pause", "action": "play_pause"}
+{"text": "read me the news", "action": "none"}
+{"text": "launch the music player", "action": "open_app"}
+{"text": "workspace 7", "action": "switch_workspace"}
+{"text": "unmute", "action": "mute"}
+{"text": "get vs code going", "action": "open_app"}
+{"text": "switch to workspace 8", "action": "switch_workspace"}
+{"text": "go to desktop three", "action": "switch_workspace"}
+{"text": "run blender", "action": "open_app"}
+{"text": "show workspace 8", "action": "switch_workspace"}
+{"text": "go to workspace six", "action": "switch_workspace"}

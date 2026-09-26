@@ -1,0 +1,73 @@
+"""Policy / safety layer.
+
+Never execute a decision directly. Every intent passes through here first:
+  1. the action must exist in the registry
+  2. its parameters must validate against the action's strict model
+  3. confidence must meet the action's threshold
+  4. the action must be supported on the current platform
+  5. destructive actions require confirmation
+
+The result is a PolicyDecision; the caller executes only if `allowed`.
+"""
+
+from __future__ import annotations
+
+from typing import Callable
+
+from pydantic import BaseModel, ValidationError
+
+from controller.actions.registry import ActionSpec, get_action
+from controller.decision.schemas import Intent
+
+# Called for destructive actions. Returns True to permit. Default denies, so a
+# missing confirmation handler fails safe.
+ConfirmFn = Callable[[Intent, ActionSpec], bool]
+
+
+def _deny(_intent: Intent, _spec: ActionSpec) -> bool:
+    return False
+
+
+class PolicyDecision(BaseModel):
+    allowed: bool
+    reason: str
+    # Parameters re-validated/normalized by the action's model, when allowed.
+    normalized_parameters: dict = {}
+
+
+class PolicyEngine:
+    def __init__(self, platform: str, confirm: ConfirmFn | None = None):
+        self.platform = platform
+        self.confirm = confirm or _deny
+
+    def evaluate(self, intent: Intent) -> PolicyDecision:
+        spec = get_action(intent.action)
+        if spec is None:
+            return PolicyDecision(allowed=False, reason=f"unknown action: {intent.action}")
+
+        try:
+            params = spec.param_model(**intent.parameters)
+        except ValidationError as e:
+            return PolicyDecision(allowed=False, reason=f"invalid parameters: {e.errors()}")
+
+        if intent.confidence < spec.min_confidence:
+            return PolicyDecision(
+                allowed=False,
+                reason=f"confidence {intent.confidence:.2f} below "
+                f"threshold {spec.min_confidence:.2f}",
+            )
+
+        if self.platform not in spec.supported_platforms:
+            return PolicyDecision(
+                allowed=False,
+                reason=f"action '{intent.action}' unsupported on {self.platform}",
+            )
+
+        if spec.destructive and not self.confirm(intent, spec):
+            return PolicyDecision(
+                allowed=False, reason=f"destructive action '{intent.action}' not confirmed"
+            )
+
+        return PolicyDecision(
+            allowed=True, reason="allowed", normalized_parameters=params.model_dump()
+        )

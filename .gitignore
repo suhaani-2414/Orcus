@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+
+# Runtime
+*.log
+audit.jsonl
+
+# Fine-tune outputs (800MB checkpoint — never commit)
+training/laya-finetuned/
+training/finetune.log
