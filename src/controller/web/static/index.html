@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Orcus — hands-free control</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --line: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #ff9d3b;
+    --ok: #3fb950; --bad: #f85149; --warn: #d29922; --idle: #6e7681;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 2rem 1rem;
+  }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; display: flex; align-items: center; gap: .6rem; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--idle); }
+  .dot.live { background: var(--ok); box-shadow: 0 0 12px var(--ok); }
+  .sub { color: var(--muted); margin: 0 0 2rem; font-size: 1.05rem; }
+
+  .card {
+    width: min(680px, 95vw); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 16px; padding: 1.75rem 2rem;
+  }
+  .status-row { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 1.5rem; font-size: 1.05rem; }
+  .label { color: var(--accent); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: .85rem; }
+
+  .heard { font-size: 1.9rem; font-weight: 600; margin: .3rem 0 1.5rem; min-height: 2.4rem; }
+  .modality { font-size: 1.4rem; }
+
+  .decision { font-size: 2.4rem; font-weight: 800; margin: .3rem 0; min-height: 2.8rem; }
+  .decision.none { color: var(--muted); font-weight: 500; font-size: 1.6rem; }
+
+  .bar { height: 22px; background: #21262d; border-radius: 11px; overflow: hidden; margin: .6rem 0 .3rem; }
+  .bar > span { display: block; height: 100%; width: 0%; background: var(--ok); transition: width .4s ease, background .3s; border-radius: 11px; }
+  .conf-note { font-size: 1.05rem; min-height: 1.4rem; }
+
+  .exec { font-size: 1.6rem; font-weight: 700; margin-top: .3rem; min-height: 2rem; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .muted { color: var(--muted); }
+
+  .section + .section { margin-top: 1.4rem; }
+  footer { color: var(--muted); margin-top: 1.5rem; font-size: .9rem; }
+</style>
+</head>
+<body>
+  <h1><span id="dot" class="dot"></span> Orcus</h1>
+  <p class="sub">Hands-free computer control · voice &amp; gesture</p>
+
+  <main class="card" aria-live="polite">
+    <div class="status-row">
+      <span id="platform">Platform: —</span>
+      <span id="status">Status: connecting…</span>
+    </div>
+
+    <div class="section">
+      <div class="label">Heard / Recognized</div>
+      <div class="heard"><span id="modality" class="modality"></span> <span id="heard">—</span></div>
+    </div>
+
+    <div class="section">
+      <div class="label">Decision</div>
+      <div id="decision" class="decision none">—</div>
+      <div class="bar"><span id="bar"></span></div>
+      <div id="confnote" class="conf-note"></div>
+    </div>
+
+    <div class="section">
+      <div class="label">Result</div>
+      <div id="exec" class="exec muted">—</div>
+    </div>
+  </main>
+
+  <footer>🔊 spoken feedback on · live via WebSocket</footer>
+
+<script>
+  const PASS = 0.70;
+  const ICON = { voice: "🎤", gesture: "✋", keyboard: "⌨️" };
+  const EXEC_CLASS = { success: "ok", error: "bad", unsupported: "warn", skipped: "muted" };
+  const $ = id => document.getElementById(id);
+
+  function rawText(raw) {
+    if (!raw) return "";
+    if (raw.type === "voice") return `“${raw.text}”`;
+    if (raw.type === "gesture") return raw.name;
+    if (raw.type === "keyboard") return raw.key;
+    return JSON.stringify(raw);
+  }
+
+  let lastSpoken = "";
+  function speak(text) {
+    if (!("speechSynthesis" in window) || text === lastSpoken) return;
+    lastSpoken = text;
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05;
+    speechSynthesis.speak(u);
+  }
+
+  function render(e) {
+    $("platform").textContent = "Platform: " + e.platform;
+    $("status").textContent = "Status: Listening";
+    $("dot").classList.add("live");
+
+    $("modality").textContent = ICON[e.input_type] || "•";
+    $("heard").textContent = rawText(e.raw_input);
+
+    const dec = $("decision");
+    if (e.decision) { dec.textContent = e.decision; dec.classList.remove("none"); }
+    else { dec.textContent = "— no matching action"; dec.classList.add("none"); }
+
+    const pct = Math.round((e.confidence || 0) * 100);
+    $("bar").style.width = pct + "%";
+    const note = $("confnote");
+    if (e.confidence == null) { note.textContent = ""; }
+    else if (e.confidence >= PASS) {
+      $("bar").style.background = "var(--ok)";
+      note.innerHTML = `<span class="ok">confidence ${pct}% ✓ above threshold</span>`;
+    } else {
+      $("bar").style.background = "var(--bad)";
+      note.innerHTML = `<span class="bad">confidence ${pct}% ✗ below ${Math.round(PASS*100)}%</span>`;
+    }
+
+    const ex = $("exec");
+    ex.textContent = e.execution;
+    ex.className = "exec " + (EXEC_CLASS[e.execution] || "");
+
+    // Spoken confirmation only for real, successful actions (accessibility).
+    if (e.execution === "success" && e.decision) {
+      speak(e.decision.replace(/_/g, " "));
+    }
+  }
+
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = ev => render(JSON.parse(ev.data));
+    ws.onclose = () => {
+      $("status").textContent = "Status: reconnecting…";
+      $("dot").classList.remove("live");
+      setTimeout(connect, 1000);
+    };
+  }
+  connect();
+</script>
+</body>
+</html>
