@@ -25,9 +25,36 @@ def extract_workspace(text: str) -> int | None:
     return None
 
 
+# Spoken names -> launchable app. Extend as needed / move to config later.
+_APP_ALIASES = {
+    "browser": "firefox",
+    "web browser": "firefox",
+    "file manager": "nautilus",
+    "files": "nautilus",
+    "terminal": "kitty",
+    "music": "spotify",
+    "music player": "spotify",
+    "editor": "code",
+    "code editor": "code",
+}
+_APP_STOPWORDS = {
+    "open", "launch", "start", "run", "fire", "up", "bring", "get", "going",
+    "please", "can", "you", "my", "the", "a", "an", "some", "for", "me",
+}
+
+
 def extract_app(text: str) -> str | None:
-    app = re.sub(r"\b(open|launch|start)\b", "", text).strip()
-    return app or None
+    # Conversational speech rambles ("open my browser. like, it's not…"), so keep
+    # only the first clause, then drop filler words and take the app name.
+    clause = re.split(r"[.,;:!?]", text.lower())[0]
+    words = [w for w in re.findall(r"[a-z0-9+-]+", clause) if w not in _APP_STOPWORDS]
+    if not words:
+        return None
+    name = " ".join(words[:2])
+    if name in _APP_ALIASES:
+        return _APP_ALIASES[name]
+    # Fall back to the first content word (handles "firefox now" -> "firefox").
+    return _APP_ALIASES.get(words[0], words[0])
 
 
 def extract_parameters(action: str, text: str) -> dict:

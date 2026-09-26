@@ -26,6 +26,15 @@ def test_voice_open_app():
     assert intent.parameters == {"application": "firefox"}
 
 
+def test_voice_open_app_handles_rambling_and_aliases():
+    # Conversational speech: only the first clause, mapped through an alias.
+    intent = engine().decide(VoiceEvent(text="Open my browser. Like it's not doing anything yet"))
+    assert intent.action == "open_app"
+    assert intent.parameters == {"application": "firefox"}
+    intent = engine().decide(VoiceEvent(text="launch the file manager"))
+    assert intent.parameters == {"application": "nautilus"}
+
+
 def test_voice_volume_up():
     assert engine().decide(VoiceEvent(text="volume up")).action == "volume_up"
 
