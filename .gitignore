@@ -17,3 +17,6 @@ audit.jsonl
 # Fine-tune outputs (800MB checkpoint — never commit)
 training/laya-finetuned/
 training/finetune.log
+
+# UI snapshots (generated)
+ui-snapshots/
