@@ -46,6 +46,17 @@ def test_config_min_confidence_overrides_action_default():
     lenient = PolicyEngine(platform="linux", min_confidence=0.5)
     assert lenient.evaluate(Intent(action="switch_workspace",
                                    parameters={"workspace": 2}, confidence=0.57)).allowed
+
+
+def test_gesture_confidence_override_can_be_stricter():
+    policy = PolicyEngine(
+        platform="linux",
+        min_confidence=0.5,
+        confidence_overrides={"four_fingers": 0.75},
+    )
+    intent = Intent(action="lock_screen", confidence=0.7)
+    assert not policy.evaluate(intent, source_name="four_fingers").allowed
+    assert policy.evaluate(Intent(action="mute", confidence=0.7), source_name="fist").allowed
     # And a stricter override rejects what the default would allow.
     strict = PolicyEngine(platform="linux", min_confidence=0.9)
     assert not strict.evaluate(Intent(action="mute", confidence=0.7)).allowed

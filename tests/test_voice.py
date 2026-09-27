@@ -66,6 +66,21 @@ def test_scribe_recognizer_requires_api_key(monkeypatch):
         ScribeRecognizer()
 
 
+def test_scribe_synthesize_uses_tts_client(monkeypatch):
+    recognizer = ScribeRecognizer(api_key="test")
+
+    class FakeTTS:
+        def convert(self, **kwargs):
+            assert kwargs["text"] == "Volume increased."
+            return [b"mp3", b"-audio"]
+
+    class FakeClient:
+        text_to_speech = FakeTTS()
+
+    recognizer._client = FakeClient()
+    assert recognizer.synthesize("Volume increased.") == b"mp3-audio"
+
+
 class ChunkRecognizer:
     def __init__(self, transcripts):
         self.transcripts = iter(transcripts)
@@ -76,7 +91,7 @@ class ChunkRecognizer:
 
 def test_always_on_requires_wake_phrase():
     source = AlwaysOnVoiceInput(
-        ChunkRecognizer(["volume up", "Orcus volume down"]),
+        ChunkRecognizer(["volume up", "computer volume down"]),
         chunk_seconds=0.01,
     )
     event = next(source.events())
@@ -85,7 +100,7 @@ def test_always_on_requires_wake_phrase():
 
 def test_always_on_supports_two_step_activation():
     source = AlwaysOnVoiceInput(
-        ChunkRecognizer(["hey orcus", "switch to workspace 3"]),
+        ChunkRecognizer(["hey computer", "switch to workspace 3"]),
         chunk_seconds=0.01,
     )
     event = next(source.events())
@@ -98,7 +113,7 @@ def test_always_on_ignores_unrelated_after_activation_timeout(monkeypatch):
     now = iter([0.0, 10.0, 20.0])
     monkeypatch.setattr(voice.time, "monotonic", lambda: next(now))
     source = AlwaysOnVoiceInput(
-        ChunkRecognizer(["Orcus", "volume up", "Orcus volume down"]),
+        ChunkRecognizer(["computer", "volume up", "computer volume down"]),
         chunk_seconds=0.01,
     )
     event = next(source.events())

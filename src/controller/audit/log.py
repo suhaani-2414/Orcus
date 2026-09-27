@@ -30,6 +30,7 @@ class AuditLog:
         confidence: float | None,
         policy: str,
         execution: str,
+        timings_ms: dict[str, float] | None = None,
     ) -> dict:
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -42,6 +43,8 @@ class AuditLog:
             "policy": policy,
             "execution": execution,
         }
+        if timings_ms:
+            entry["timings_ms"] = timings_ms
         line = json.dumps(entry)
         if self.path:
             with self.path.open("a") as f:

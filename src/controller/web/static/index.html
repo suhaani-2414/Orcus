@@ -40,6 +40,9 @@
       <button type="button" class="btn-ghost" id="openMappings" aria-haspopup="dialog" aria-controls="mappingsModal">
         Gesture mappings
       </button>
+      <button type="button" class="btn-ghost" id="openSetup" aria-haspopup="dialog" aria-controls="setupModal">
+        Setup
+      </button>
       <div class="conn" id="conn">
         <span class="conn-dot" id="dot"></span>
         <span id="status">Connecting…</span>
@@ -132,7 +135,10 @@
     </aside>
   </main>
 
-  <footer class="foot mono">spoken feedback on · live via websocket</footer>
+  <footer class="foot mono">
+    spoken feedback on · live via websocket
+    <span class="runtime-health" id="runtimeHealth" aria-live="polite">runtime: checking…</span>
+  </footer>
 
   <!-- Actions modal: the full action vocabulary, filled from /api/actions -->
   <div class="modal-backdrop" id="actionsModal" hidden>
@@ -186,10 +192,29 @@
         <button type="button" class="btn-primary" id="confirmProceed">Proceed</button>
         <button type="button" class="btn-ghost" id="confirmCancel">Cancel</button>
       </div>
+
+      <div class="modal-backdrop" id="setupModal" hidden>
+        <div class="modal panel setup-modal" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+          <div class="modal-head">
+            <div>
+              <div class="panel-label"><span class="tick"></span>Release checks</div>
+              <h2 id="setupTitle">Orcus setup</h2>
+              <p class="modal-sub">Review local devices and integrations before the demo. No secrets are shown here.</p>
+            </div>
+            <button type="button" class="modal-close" id="closeSetup" aria-label="Close setup">×</button>
+          </div>
+          <div class="setup-status mono" id="setupStatus">loading…</div>
+          <div class="setup-actions">
+            <button type="button" class="btn-ghost" id="refreshSetup">Refresh checks</button>
+            <button type="button" class="btn-ghost" id="testCamera">Test camera status</button>
+            <button type="button" class="btn-ghost" id="testMic">Test microphone setup</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <script src="/static/app.js?v=confirm1"></script>
+  <script src="/static/app.js?v=stabilize2"></script>
   <script src="/static/voice.js"></script>
   <script src="/static/camera.js"></script>
   <script src="/static/actions.js"></script>

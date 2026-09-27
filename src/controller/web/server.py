@@ -13,8 +13,11 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import shutil
+import subprocess
 import threading
 import time
+import tempfile
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -36,6 +39,14 @@ _clients: set[WebSocket] = set()
 _latest: dict = {}
 # Recent entries, replayed to a newly opened tab so its event log isn't empty.
 _history: deque[dict] = deque(maxlen=25)
+_metrics: deque[dict] = deque(maxlen=500)
+_runtime_lock = threading.Lock()
+_runtime = {
+    "camera": {"state": "off", "error": None, "last_frame": None},
+    "voice": {"state": "off", "error": None},
+    "pipeline": {"state": "idle", "error": None},
+    "preload": {"state": "pending", "error": None},
+}
 
 
 class GestureMappingRequest(BaseModel):
@@ -44,6 +55,10 @@ class GestureMappingRequest(BaseModel):
 
 class ConfirmationRequest(BaseModel):
     confirmed: bool
+
+
+class SpeakRequest(BaseModel):
+    text: str
 
 
 class _DryRun(OSController):
@@ -68,10 +83,13 @@ async def _gesture_consumer(queue: asyncio.Queue) -> None:
     """Drain gesture events (from the camera thread) → pipeline → broadcast."""
     while True:
         event = await queue.get()
-        await asyncio.to_thread(_get_voice_pipeline().handle, event)
-        entry = dict(_latest)
-        _history.append(entry)
-        await _broadcast(entry)
+        try:
+            await asyncio.to_thread(_get_voice_pipeline().handle, event)
+            entry = dict(_latest)
+            _history.append(entry)
+            await _broadcast(entry)
+        except Exception as error:
+            _set_runtime("pipeline", state="error", error=str(error))
 
 
 _latest_frame: bytes | None = None  # latest camera JPEG for the preview
@@ -88,21 +106,52 @@ def _frame_sink(frame) -> None:
     ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
     if ok:
         _latest_frame = buf.tobytes()
+        _set_runtime("camera", state="running", error=None, last_frame=time.time())
+
+
+def _set_runtime(component: str, **values) -> None:
+    with _runtime_lock:
+        _runtime[component].update(values)
+
+
+def _runtime_snapshot() -> dict:
+    with _runtime_lock:
+        return {name: dict(values) for name, values in _runtime.items()}
 
 
 def _gesture_worker(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> None:
     """Camera + MediaPipe swipe detection in a thread; hand events to the loop."""
     from controller.inputs.gestures import GestureInput
 
-    try:
-        print("gesture worker: opening camera…", flush=True)
-        for event in GestureInput(show_window=False, frame_sink=_frame_sink).events():
-            print(f"gesture: {event.name} ({event.confidence})", flush=True)
-            loop.call_soon_threadsafe(queue.put_nowait, event)
-    except Exception as e:
-        import traceback
-        print(f"gesture capture stopped: {e}", flush=True)
-        traceback.print_exc()
+    from controller.main import load_config
+
+    settings = load_config().get("gesture_settings") or {}
+    _set_runtime("camera", state="starting", error=None)
+    while not _gesture_stop.is_set():
+        try:
+            print("gesture worker: opening camera…", flush=True)
+            source = GestureInput(
+                show_window=False,
+                frame_sink=_frame_sink,
+                **{key: value for key, value in settings.items()
+                   if key in {
+                       "static_min_confidence", "static_stable_frames",
+                       "static_cooldown_seconds", "swipe_min_travel",
+                       "swipe_cooldown_seconds", "camera_index",
+                   }},
+            )
+            _set_runtime("camera", state="running", error=None)
+            for event in source.events():
+                if _gesture_stop.is_set():
+                    break
+                print(f"gesture: {event.name} ({event.confidence})", flush=True)
+                loop.call_soon_threadsafe(queue.put_nowait, event)
+        except Exception as error:
+            _set_runtime("camera", state="error", error=str(error))
+            print(f"gesture capture retrying: {error}", flush=True)
+            _gesture_stop.wait(2.0)
+        finally:
+            _set_runtime("camera", state="stopped" if _gesture_stop.is_set() else "retrying")
 
 
 @asynccontextmanager
@@ -113,7 +162,9 @@ async def _lifespan(app: FastAPI):
         try:
             await asyncio.to_thread(_get_voice_pipeline)
             await asyncio.to_thread(_get_recognizer().warm)
+            _set_runtime("preload", state="ready", error=None)
         except Exception as e:  # e.g. no API key yet — fine, it'll load on use
+            _set_runtime("preload", state="error", error=str(e))
             print(f"preload skipped: {e}", flush=True)
 
     asyncio.create_task(_preload())
@@ -123,10 +174,15 @@ async def _lifespan(app: FastAPI):
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
         asyncio.create_task(_gesture_consumer(queue))
-        threading.Thread(target=_gesture_worker, args=(loop, queue), daemon=True).start()
+        _gesture_stop.clear()
+        threading.Thread(target=_gesture_worker, args=(loop, queue), daemon=True,
+                         name="orcus-camera").start()
         print("gesture capture: on (swipe left/right)", flush=True)
 
     if os.environ.get("ORCUS_ALWAYS_ON") == "1":
+        global _voice_queue, _voice_consumer_task
+        _voice_queue = asyncio.Queue(maxsize=8)
+        _voice_consumer_task = asyncio.create_task(_voice_command_consumer(_voice_queue))
         voice_status = await always_on_start()
         if voice_status.get("active"):
             print("always-on voice: on", flush=True)
@@ -137,6 +193,10 @@ async def _lifespan(app: FastAPI):
             )
 
     yield
+    _gesture_stop.set()
+    _always_on_stop.set()
+    if _always_on_source is not None:
+        _always_on_source.stop()
 
 
 app = FastAPI(lifespan=_lifespan)
@@ -162,6 +222,90 @@ async def camera():
             await asyncio.sleep(1 / 15)  # ~15 fps cap
 
     return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+
+@app.get("/api/status")
+async def runtime_status() -> dict:
+    return _runtime_snapshot()
+
+
+@app.get("/api/metrics")
+async def runtime_metrics() -> dict:
+    samples = list(_metrics)
+    totals = [sample.get("total") for sample in samples if sample.get("total") is not None]
+    if not totals:
+        return {"samples": 0, "average_total_ms": None, "p95_total_ms": None}
+    totals.sort()
+    p95_index = min(len(totals) - 1, int(len(totals) * 0.95))
+    return {
+        "samples": len(totals),
+        "average_total_ms": round(sum(totals) / len(totals), 2),
+        "p95_total_ms": round(totals[p95_index], 2),
+    }
+
+
+@app.get("/api/setup")
+async def setup_status() -> dict:
+    """Return safe first-run diagnostics without exposing credentials."""
+    from controller.main import load_config
+
+    config = load_config()
+    return {
+        "execution_enabled": os.environ.get("ORCUS_EXECUTE") == "1",
+        "voice_key_configured": bool(os.environ.get("ELEVENLABS_API_KEY")),
+        "camera_index": (config.get("gesture_settings") or {}).get("camera_index", 0),
+        "gesture_settings": config.get("gesture_settings") or {},
+        "wake_word": os.environ.get("ORCUS_WAKE_WORD", "computer"),
+        "confirmation_timeout_seconds": config.get("confirmation_timeout_seconds", 30),
+        "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
+        "tts_enabled": os.environ.get("ORCUS_TTS", "1") != "0",
+        "runtime": _runtime_snapshot(),
+    }
+
+
+@app.get("/api/devices")
+async def device_status() -> dict:
+    cameras = []
+    try:
+        import cv2
+
+        for index in range(4):
+            capture = cv2.VideoCapture(index)
+            if capture.isOpened():
+                cameras.append({"index": index, "available": True})
+            capture.release()
+    except Exception:
+        cameras = []
+
+    microphones = []
+    if shutil.which("arecord"):
+        result = await asyncio.to_thread(
+            subprocess.run, ["arecord", "-l"], capture_output=True, text=True, check=False
+        )
+        microphones = [
+            line.strip() for line in result.stdout.splitlines()
+            if line.strip().startswith("card ")
+        ]
+    return {
+        "cameras": cameras,
+        "microphones": microphones,
+        "recorders": [name for name in ("arecord", "ffmpeg") if shutil.which(name)],
+    }
+
+
+@app.post("/api/voice/speak")
+async def voice_speak(request: SpeakRequest):
+    """Generate optional ElevenLabs audio for browser playback."""
+    if os.environ.get("ORCUS_TTS", "1") == "0":
+        return {"ok": False, "error": "spoken feedback disabled"}
+    try:
+        audio = await asyncio.to_thread(_get_recognizer().synthesize, request.text)
+    except Exception as error:
+        _set_runtime("voice", state="error", error=f"TTS: {error}")
+        return {"ok": False, "error": str(error)}
+    from fastapi.responses import Response
+
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @app.get("/api/actions")
@@ -255,7 +399,6 @@ async def update_gesture_mappings(request: GestureMappingRequest) -> dict:
         if action
     }
     config["gestures"] = mappings
-    temporary = CONFIG_PATH.with_suffix(".yaml.tmp")
     import yaml
 
     existing_text = CONFIG_PATH.read_text()
@@ -268,8 +411,22 @@ async def update_gesture_mappings(request: GestureMappingRequest) -> dict:
         f"{gesture_block}\n\n",
         existing_text,
     )
-    temporary.write_text(updated_text)
-    temporary.replace(CONFIG_PATH)
+    yaml.safe_load(updated_text)
+    temporary_fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{CONFIG_PATH.name}.", suffix=".tmp", dir=CONFIG_PATH.parent
+    )
+    try:
+        with os.fdopen(temporary_fd, "w") as temporary_file:
+            temporary_file.write(updated_text)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_name, CONFIG_PATH)
+    except Exception:
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
 
     pipeline = _voice_pipeline
     if pipeline is not None:
@@ -326,11 +483,16 @@ _always_on_thread: threading.Thread | None = None
 _always_on_stop = threading.Event()
 _always_on_ready = threading.Event()
 _always_on_error: str | None = None
+_gesture_stop = threading.Event()
+_voice_queue: asyncio.Queue | None = None
+_voice_consumer_task: asyncio.Task | None = None
 
 
 def _voice_observer(entry: dict) -> None:
     _latest.clear()
     _latest.update(entry)
+    if entry.get("timings_ms"):
+        _metrics.append(entry["timings_ms"])
 
 
 def _get_voice_pipeline() -> Pipeline:
@@ -350,8 +512,15 @@ def _get_voice_pipeline() -> Pipeline:
         engine = build_engine(config, use_laya=True)
         _voice_pipeline = Pipeline(
             engine,
-            PolicyEngine(platform=controller.platform, min_confidence=config.get("min_confidence")),
+            PolicyEngine(
+                platform=controller.platform,
+                min_confidence=config.get("min_confidence"),
+                confidence_overrides=config.get("gesture_confidence"),
+            ),
             controller, AuditLog(stream=None), observer=_voice_observer,
+        )
+        _voice_pipeline.confirmation_timeout_seconds = float(
+            config.get("confirmation_timeout_seconds", 30.0)
         )
     return _voice_pipeline
 
@@ -403,46 +572,75 @@ async def _transcribe_and_run(wav_path: str, record_secs: float) -> dict:
 
 
 async def _handle_voice_event(event: VoiceEvent) -> None:
-    await asyncio.to_thread(_get_voice_pipeline().handle, event)
+    _set_runtime("pipeline", state="running", error=None)
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(_get_voice_pipeline().handle, event),
+            timeout=float(os.environ.get("ORCUS_COMMAND_TIMEOUT", "30")),
+        )
+    except Exception:
+        _set_runtime("pipeline", state="error", error="voice command timed out or failed")
+        raise
+    finally:
+        _set_runtime("pipeline", state="idle")
     entry = dict(_latest)
     _history.append(entry)
     await _broadcast(entry)
+
+
+async def _voice_command_consumer(queue: asyncio.Queue) -> None:
+    while True:
+        event = await queue.get()
+        try:
+            await _handle_voice_event(event)
+        except Exception as error:
+            _set_runtime("voice", state="error", error=str(error))
+        finally:
+            queue.task_done()
+
+
+def _enqueue_voice_event(event: VoiceEvent) -> None:
+    if _voice_queue is None:
+        return
+    try:
+        _voice_queue.put_nowait(event)
+    except asyncio.QueueFull:
+        _set_runtime("voice", state="error", error="voice command queue is full")
 
 
 def _always_on_worker(loop: asyncio.AbstractEventLoop) -> None:
     from controller.inputs.voice import AlwaysOnVoiceInput
 
     global _always_on_source, _always_on_error
-    try:
-        source = AlwaysOnVoiceInput(
-            _get_recognizer(),
-            wake_phrases=(os.environ.get("ORCUS_WAKE_WORD", "orcus"),),
-            on_status=lambda message: print(f"voice: {message}", flush=True),
-        )
-        _always_on_source = source
-        _always_on_ready.set()
-        for event in source.events():
-            if _always_on_stop.is_set():
-                break
-            try:
-                future = asyncio.run_coroutine_threadsafe(_handle_voice_event(event), loop)
-                future.result()
-            except Exception as error:
-                # A single bad transcript/model response must not terminate
-                # continuous listening.
-                print(f"voice: command failed; continuing: {error}", flush=True)
-    except Exception as error:
-        _always_on_error = str(error)
-        _always_on_ready.set()
-        print(f"voice: always-on stopped: {error}", flush=True)
-    finally:
-        _always_on_source = None
+    while not _always_on_stop.is_set():
+        try:
+            source = AlwaysOnVoiceInput(
+                _get_recognizer(),
+                wake_phrases=(os.environ.get("ORCUS_WAKE_WORD", "computer"),),
+                on_status=lambda message: print(f"voice: {message}", flush=True),
+            )
+            _always_on_source = source
+            _set_runtime("voice", state="running", error=None)
+            _always_on_ready.set()
+            for event in source.events():
+                if _always_on_stop.is_set():
+                    break
+                loop.call_soon_threadsafe(_enqueue_voice_event, event)
+        except Exception as error:
+            _always_on_error = str(error)
+            _set_runtime("voice", state="error", error=str(error))
+            _always_on_ready.set()
+            print(f"voice: retrying after error: {error}", flush=True)
+            _always_on_stop.wait(2.0)
+        finally:
+            _always_on_source = None
+    _set_runtime("voice", state="stopped", error=None)
 
 
 @app.get("/api/voice/always-on")
 async def always_on_status() -> dict:
     return {"active": _always_on_thread is not None and _always_on_thread.is_alive(),
-            "wake_word": os.environ.get("ORCUS_WAKE_WORD", "orcus"),
+            "wake_word": os.environ.get("ORCUS_WAKE_WORD", "computer"),
             "error": _always_on_error}
 
 
@@ -454,6 +652,7 @@ async def always_on_start() -> dict:
     try:
         _get_recognizer()
     except RuntimeError as error:
+        _set_runtime("voice", state="error", error=str(error))
         return {"active": False, "error": str(error)}
     _always_on_stop.clear()
     _always_on_ready.clear()
@@ -472,6 +671,7 @@ async def always_on_stop() -> dict:
     _always_on_stop.set()
     if _always_on_source is not None:
         _always_on_source.stop()
+    _set_runtime("voice", state="stopping")
     return {"active": False}
 
 

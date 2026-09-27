@@ -16,7 +16,27 @@ import time
 import webbrowser
 from pathlib import Path
 
+from controller.config import load_env_file
 from controller.main import main
+
+_instance_lock = None
+
+
+def _acquire_instance_lock() -> bool:
+    """Keep one dashboard process responsible for camera/microphone ownership."""
+    global _instance_lock
+    try:
+        import fcntl
+
+        lock_path = Path(os.environ.get("ORCUS_LOCK_FILE", "/tmp/orcus.lock"))
+        _instance_lock = lock_path.open("w")
+        fcntl.flock(_instance_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except (BlockingIOError, OSError):
+        if _instance_lock is not None:
+            _instance_lock.close()
+            _instance_lock = None
+        return False
 
 
 def _open_dashboard(url: str) -> None:
@@ -51,6 +71,7 @@ def _port_is_open(host: str, port: int) -> bool:
 
 def orcus() -> None:
     """Launch the current checkout's dashboard and always-on voice listener."""
+    load_env_file()
     if len(sys.argv) > 1:
         main()
         return
@@ -67,9 +88,13 @@ def orcus() -> None:
         ) from error
 
     url = "http://127.0.0.1:8000"
+    if not _acquire_instance_lock():
+        print(f"Orcus is already running at {url}; opening the existing dashboard.")
+        threading.Thread(target=_open_dashboard, args=(url,), daemon=True).start()
+        return
     if _port_is_open("127.0.0.1", 8000):
         print(f"Orcus is already running at {url}; opening the existing dashboard.")
-        _open_dashboard(url)
+        threading.Thread(target=_open_dashboard, args=(url,), daemon=True).start()
         return
 
     def open_dashboard() -> None:

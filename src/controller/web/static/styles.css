@@ -273,6 +273,12 @@ h1 {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
+.runtime-health { margin-left: 1rem; color: var(--muted); }
+.runtime-health.bad { color: var(--bad); }
+.setup-modal { max-width: 700px; }
+.setup-status { white-space: pre-wrap; line-height: 1.7; color: var(--muted); }
+.setup-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1rem; }
+
 /* ───────────── Top-bar actions button ───────────── */
 .top-actions { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
 .voice-controls { display: inline-flex; align-items: center; gap: .45rem; flex-wrap: wrap; }

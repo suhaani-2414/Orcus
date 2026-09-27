@@ -2,5 +2,8 @@
 
 import uvicorn
 
+from controller.config import load_env_file
+
 if __name__ == "__main__":
+    load_env_file()
     uvicorn.run("controller.web.server:app", host="127.0.0.1", port=8000, log_level="warning")

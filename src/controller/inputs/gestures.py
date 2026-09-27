@@ -30,6 +30,11 @@ class GestureInput(InputSource):
         show_window: bool = True,
         frame_sink=None,
         static_model: str | Path | None = MODEL_PATH,
+        static_min_confidence: float = 0.8,
+        static_stable_frames: int = 8,
+        static_cooldown_seconds: float = 0.8,
+        swipe_min_travel: float = 0.22,
+        swipe_cooldown_seconds: float = 0.7,
     ):
         self.camera_index = camera_index
         self.show_window = show_window
@@ -37,6 +42,11 @@ class GestureInput(InputSource):
         # used to stream a live preview without opening the camera twice.
         self.frame_sink = frame_sink
         self.static_model = Path(static_model) if static_model else None
+        self.static_min_confidence = static_min_confidence
+        self.static_stable_frames = static_stable_frames
+        self.static_cooldown_seconds = static_cooldown_seconds
+        self.swipe_min_travel = swipe_min_travel
+        self.swipe_cooldown_seconds = swipe_cooldown_seconds
         self._running = False
 
     def stop(self) -> None:
@@ -50,7 +60,12 @@ class GestureInput(InputSource):
         if self.static_model and self.static_model.exists():
             from controller.inputs.static_gestures import StaticGestureClassifier
 
-            static_classifier = StaticGestureClassifier(self.static_model)
+            static_classifier = StaticGestureClassifier(
+                self.static_model,
+                min_confidence=self.static_min_confidence,
+                stable_frames=self.static_stable_frames,
+                cooldown_seconds=self.static_cooldown_seconds,
+            )
 
         mp_hands = mp.solutions.hands
         mp_drawing = mp.solutions.drawing_utils
@@ -64,7 +79,10 @@ class GestureInput(InputSource):
             min_detection_confidence=0.5,  # lower = steadier tracking, less flicker
             min_tracking_confidence=0.5,
         )
-        detector = SwipeDetector()
+        detector = SwipeDetector(
+            min_travel=self.swipe_min_travel,
+            cooldown_seconds=self.swipe_cooldown_seconds,
+        )
         self._running = True
         debug = os.environ.get("ORCUS_GESTURE_DEBUG") == "1"
         frames = hands_seen = 0

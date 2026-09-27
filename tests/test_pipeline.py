@@ -1,4 +1,5 @@
 import io
+import json
 
 from controller.audit.log import AuditLog
 from controller.decision.rules import RuleBasedEngine
@@ -74,4 +75,32 @@ def test_destructive_action_can_be_cancelled():
     pipeline.handle(VoiceEvent(text="lock the screen"))
     result = pipeline.confirm_pending(False)
     assert result.status == "cancelled"
+    assert ctrl.executed == []
+
+
+def test_pipeline_audit_includes_stage_timings():
+    stream = io.StringIO()
+    ctrl = RecordingController()
+    engine = RuleBasedEngine(
+        gesture_map={"swipe_right": "next_workspace"}, keyboard_map={}
+    )
+    pipeline = Pipeline(
+        engine,
+        PolicyEngine(platform="linux"),
+        ctrl,
+        AuditLog(stream=stream),
+    )
+    pipeline.handle(GestureEvent(name="swipe_right", confidence=0.95))
+    entry = json.loads(stream.getvalue())
+    assert set(entry["timings_ms"]) >= {"decision", "policy", "execute", "total"}
+
+
+def test_confirmation_expires_without_execution(monkeypatch):
+    ctrl = RecordingController()
+    pipeline = build(ctrl)
+    pipeline.confirmation_timeout_seconds = 0
+    pipeline.handle(VoiceEvent(text="lock the screen"))
+    result = pipeline.confirm_pending(True)
+    assert result.status == "cancelled"
+    assert "expired" in result.detail
     assert ctrl.executed == []

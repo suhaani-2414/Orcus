@@ -7,6 +7,21 @@
 # Strict: the fine-tuned model abstains on unrelated speech (that's the main
 # filter), so this only gates borderline valid commands.
 min_confidence: 0.50
+confirmation_timeout_seconds: 30
+
+# Recognition tuning. These are conservative defaults; adjust only after
+# observing the live camera and event stream.
+gesture_settings:
+  camera_index: 0
+  static_min_confidence: 0.80
+  static_stable_frames: 8
+  static_cooldown_seconds: 0.80
+  swipe_min_travel: 0.22
+  swipe_cooldown_seconds: 0.70
+
+# Optional stricter thresholds for individual gesture names.
+gesture_confidence:
+  four_fingers: 0.75
 
 # Gesture name -> action. The gesture recognizer stays generic; only this map
 # ties a gesture to meaning.

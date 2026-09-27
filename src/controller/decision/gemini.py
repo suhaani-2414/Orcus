@@ -67,17 +67,30 @@ class GeminiDecisionEngine(DecisionEngine):
     def decide(self, event: Event) -> Intent | None:
         if not isinstance(event, VoiceEvent):
             return None
-        prompt = _INSTRUCTIONS.format(vocab=_vocabulary(), text=event.text)
+        prompt = _INSTRUCTIONS.format(vocab=_vocabulary(), text=event.text[:500])
         try:
             data = json.loads(self._raw(prompt))
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return None
 
+        if not isinstance(data, dict):
+            return None
         action = data.get("action")
+        parameters = data.get("parameters", {})
+        if parameters is None:
+            parameters = {}
+        if not isinstance(action, str) or not isinstance(parameters, dict):
+            return None
         if not action or action == "none" or get_action(action) is None:
+            return None
+        try:
+            confidence = float(data.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            return None
+        if not 0.0 <= confidence <= 1.0:
             return None
         return Intent(
             action=action,
-            parameters=data.get("parameters") or {},
-            confidence=float(data.get("confidence", 0.9)),
+            parameters=parameters,
+            confidence=confidence,
         )

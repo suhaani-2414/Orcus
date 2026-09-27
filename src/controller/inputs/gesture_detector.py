@@ -23,8 +23,15 @@ HAND_TIMEOUT = 0.5  # tolerate brief detection drops mid-swipe (motion blur)
 
 
 class SwipeDetector:
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        min_travel: float = MIN_TRAVEL,
+        cooldown_seconds: float = COOLDOWN_SECONDS,
+    ):
         self.buffer: deque[tuple[float, float, float]] = deque()
+        self.min_travel = min_travel
+        self.cooldown_seconds = cooldown_seconds
         # Negative sentinels so the first swipe isn't swallowed by the cooldown
         # regardless of the clock's base (time.time() vs. a test's t=0).
         self.last_fire = -1e9
@@ -47,7 +54,7 @@ class SwipeDetector:
         while self.buffer and t - self.buffer[0][0] > WINDOW_SECONDS:
             self.buffer.popleft()
 
-        if t - self.last_fire < COOLDOWN_SECONDS:
+        if t - self.last_fire < self.cooldown_seconds:
             return None
         if len(self.buffer) < 3:
             return None
@@ -69,20 +76,20 @@ class SwipeDetector:
             # y increases downward in frame coords.
             name = "swipe_down" if dy > 0 else "swipe_up"
 
-        if abs(main) < MIN_TRAVEL:
+        if abs(main) < self.min_travel:
             return None
         if abs(cross) > MAX_CROSS_RATIO * abs(main):
             return None  # too diagonal to be a clean directional swipe
 
         self.last_fire = t
         self.reset()
-        return name, _confidence(main, cross)
+        return name, _confidence(main, cross, self.min_travel)
 
 
-def _confidence(main: float, cross: float) -> float:
+def _confidence(main: float, cross: float, min_travel: float = MIN_TRAVEL) -> float:
     """A defensible 0.7-0.99 score: cleaner (straighter, longer) swipes score
     higher. Stays >= 0.7 so a detected swipe clears the policy threshold."""
     straightness = 1.0 - min(1.0, abs(cross) / max(abs(main), 1e-6))
-    reach = min(1.0, abs(main) / (2 * MIN_TRAVEL))
+    reach = min(1.0, abs(main) / (2 * min_travel))
     score = 0.7 + 0.29 * (0.5 * straightness + 0.5 * reach)
     return round(min(0.99, score), 2)

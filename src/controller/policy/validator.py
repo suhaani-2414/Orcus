@@ -42,14 +42,16 @@ class PolicyEngine:
         platform: str,
         confirm: ConfirmFn | None = None,
         min_confidence: float | None = None,
+        confidence_overrides: dict[str, float] | None = None,
     ):
         self.platform = platform
         self.confirm = confirm or _deny
         # Global confidence threshold from config; overrides each action's
         # registry default when set. None -> fall back to the per-action value.
         self.min_confidence = min_confidence
+        self.confidence_overrides = confidence_overrides or {}
 
-    def evaluate(self, intent: Intent) -> PolicyDecision:
+    def evaluate(self, intent: Intent, source_name: str | None = None) -> PolicyDecision:
         spec = get_action(intent.action)
         if spec is None:
             return PolicyDecision(allowed=False, reason=f"unknown action: {intent.action}")
@@ -60,6 +62,8 @@ class PolicyEngine:
             return PolicyDecision(allowed=False, reason=f"invalid parameters: {e.errors()}")
 
         threshold = spec.min_confidence if self.min_confidence is None else self.min_confidence
+        if source_name in self.confidence_overrides:
+            threshold = max(threshold, self.confidence_overrides[source_name])
         if intent.confidence < threshold:
             return PolicyDecision(
                 allowed=False,

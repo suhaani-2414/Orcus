@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from controller.audit.log import AuditLog
+from controller.config import load_env_file
 from controller.decision.rules import RuleBasedEngine
 from controller.decision.schemas import GestureEvent, KeyboardEvent, VoiceEvent
 from controller.inputs.mock import MockInput
@@ -62,15 +63,14 @@ def build_engine(config: dict, use_laya: bool):
         load_laya_client(), actions=LAYA_TRAINED_ACTIONS, allow_none=finetuned
     )
 
-    # Order = speed: regex web commands (instant) -> Laya (local) -> Gemini
-    # (flexible, only fires when the above abstain) -> rules (offline fallback).
-    engines = [WebCommandEngine(), laya]
+    # Order = speed: exact web commands -> deterministic common commands ->
+    # Laya for natural language -> optional Gemini fallback.
+    engines = [WebCommandEngine(), rules, laya]
     if os.environ.get("GEMINI_API_KEY"):
         from controller.decision.gemini import GeminiDecisionEngine
 
         print("Gemini fallback: on")
         engines.append(GeminiDecisionEngine())
-    engines.append(rules)
     return CompositeEngine(engines)
 
 
@@ -85,6 +85,7 @@ class DryRunController(OSController):
 
 
 def main() -> None:
+    load_env_file()
     parser = argparse.ArgumentParser(description="Multimodal OS Controller (Stage 1)")
     parser.add_argument("--execute", action="store_true", help="run real OS actions")
     parser.add_argument(

@@ -82,6 +82,22 @@ class ScribeRecognizer(SpeechRecognizer):
         except Exception:
             pass
 
+    def synthesize(self, text: str, voice_id: str | None = None) -> bytes:
+        """Return ElevenLabs MP3 audio for optional spoken dashboard feedback."""
+        if not text.strip():
+            return b""
+        result = self._get_client().text_to_speech.convert(
+            voice_id=voice_id or os.environ.get(
+                "ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"
+            ),
+            model_id=os.environ.get("ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2"),
+            output_format="mp3_44100_128",
+            text=text,
+        )
+        if isinstance(result, bytes):
+            return result
+        return b"".join(result)
+
     def listen(self) -> str:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
             _record_wav(tmp.name, self.record_seconds)
@@ -194,9 +210,9 @@ class AlwaysOnVoiceInput(InputSource):
         self,
         recognizer,
         *,
-        wake_phrases: tuple[str, ...] = ("orcus", "hey orcus"),
-        chunk_seconds: float = 2.0,
-        activation_timeout: float = 6.0,
+        wake_phrases: tuple[str, ...] = ("computer", "hey computer"),
+        chunk_seconds: float = 4.0,  # fit "computer <command>" in one window
+        activation_timeout: float = 8.0,
         on_status=None,
     ):
         if chunk_seconds <= 0:
@@ -223,7 +239,7 @@ class AlwaysOnVoiceInput(InputSource):
             if normalized.startswith(phrase + " "):
                 return normalized[len(phrase):].strip()
         if "orcus" in self.wake_phrases:
-            for variant in ("orcas", "orkus", "orkus", "orcuss", "ocus"):
+            for variant in ("orcas", "orkus", "orcus", "orcuss", "ocus", "orcos"):
                 if normalized == variant:
                     return ""
                 if normalized.startswith(variant + " "):
@@ -258,3 +274,6 @@ class AlwaysOnVoiceInput(InputSource):
                 self._active_until = 0.0
                 self.on_status(f"heard command: {text!r}")
                 yield VoiceEvent(text=text)
+            else:
+                # Show what STT heard so a mis-transcribed wake word is visible.
+                self.on_status(f"ignored (say wake word first): {text!r}")

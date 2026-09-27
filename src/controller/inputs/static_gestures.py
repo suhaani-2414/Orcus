@@ -39,6 +39,7 @@ class StaticGestureClassifier:
         min_confidence: float = 0.8,
         stable_frames: int = 8,
         cooldown_seconds: float = 0.8,
+        disabled_labels: set[str] | None = None,
     ):
         import pickle
 
@@ -49,6 +50,7 @@ class StaticGestureClassifier:
         self.min_confidence = min_confidence
         self.history: deque[str] = deque(maxlen=stable_frames)
         self.cooldown_seconds = cooldown_seconds
+        self.disabled_labels = disabled_labels or {"open_palm"}
         self.last_fire = -float("inf")
         self.armed = True
 
@@ -58,7 +60,7 @@ class StaticGestureClassifier:
         index = int(np.argmax(probabilities))
         confidence = float(probabilities[index])
         name = MODEL_LABELS.get(int(self.model.classes_[index]))
-        if name is None or confidence < self.min_confidence:
+        if name is None or name in self.disabled_labels or confidence < self.min_confidence:
             self.history.clear()
             self.armed = True
             return None

@@ -9,6 +9,68 @@ const RING_LEN = 2 * Math.PI * 52;
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = id => document.getElementById(id);
 
+function setupModal() {
+  const modal = $("setupModal");
+  const status = $("setupStatus");
+  const open = $("openSetup");
+  const close = $("closeSetup");
+  const refresh = $("refreshSetup");
+  const camera = $("testCamera");
+  const mic = $("testMic");
+  if (!modal || !status || !open || !close) return;
+
+  const render = (setup, devices) => {
+    const runtime = setup.runtime || {};
+    const cameraState = runtime.camera?.state || "off";
+    const voiceState = runtime.voice?.state || "off";
+    const lines = [
+      `Execution: ${setup.execution_enabled ? "LIVE actions enabled" : "dry-run"}`,
+      `ElevenLabs key: ${setup.voice_key_configured ? "configured" : "missing"}`,
+      `ElevenLabs TTS: ${setup.tts_enabled ? "enabled" : "disabled"}`,
+      `Gemini key: ${setup.gemini_configured ? "configured" : "not configured"}`,
+      `Wake word: ${setup.wake_word}`,
+      `Camera ${setup.camera_index}: ${cameraState}`,
+      `Voice worker: ${voiceState}`,
+      `Available cameras: ${(devices.cameras || []).map(item => item.index).join(", ") || "none detected"}`,
+      `Microphone devices: ${(devices.microphones || []).length || "none detected"}`,
+      `Recorders: ${(devices.recorders || []).join(", ") || "none"}`,
+    ];
+    status.textContent = lines.join("\n");
+  };
+
+  async function load() {
+    status.textContent = "checking local devices…";
+    try {
+      const [setupResponse, devicesResponse] = await Promise.all([
+        fetch("/api/setup"), fetch("/api/devices"),
+      ]);
+      if (!setupResponse.ok || !devicesResponse.ok) throw new Error("checks failed");
+      render(await setupResponse.json(), await devicesResponse.json());
+    } catch (error) {
+      status.textContent = `Setup checks unavailable: ${error.message}`;
+    }
+  }
+
+  open.addEventListener("click", () => {
+    modal.hidden = false;
+    modal.classList.add("show");
+    load();
+  });
+  close.addEventListener("click", () => {
+    modal.classList.remove("show");
+    setTimeout(() => { modal.hidden = true; }, 180);
+  });
+  refresh?.addEventListener("click", load);
+  camera?.addEventListener("click", () => {
+    status.textContent = "Camera status is shown above; open the Camera preview to see live frames.";
+    load();
+  });
+  mic?.addEventListener("click", () => {
+    status.textContent = "Microphone setup is shown above; use Talk for a non-continuous recording test.";
+    load();
+  });
+}
+
 const ICONS = {
   voice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
   gesture: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5v-7a1.5 1.5 0 0 1 3 0V12M14 11.5v-5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 7-6.5 7S5 18.5 4 16l-1.3-3a1.5 1.5 0 0 1 2.6-1.4L8 15"/></svg>',
@@ -102,11 +164,24 @@ function decode(node, text) {
 
 let lastSpoken = "";
 function speak(text) {
-  if (!("speechSynthesis" in window) || text === lastSpoken) return;
+  if (text === lastSpoken) return;
   lastSpoken = text;
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 1.05;
-  speechSynthesis.speak(u);
+  fetch("/api/voice/speak", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({text}),
+  }).then(async response => {
+    if (!response.ok) throw new Error("TTS unavailable");
+    const type = response.headers.get("content-type") || "";
+    if (!type.includes("audio/")) throw new Error("TTS disabled");
+    const audio = new Audio(URL.createObjectURL(await response.blob()));
+    audio.play().catch(() => {});
+  }).catch(() => {
+    if (!("speechSynthesis" in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05;
+    speechSynthesis.speak(u);
+  });
 }
 
 // ───────────── pipeline stages ─────────────
@@ -276,6 +351,24 @@ function connect() {
   };
 }
 
+async function refreshRuntimeHealth() {
+  const node = $("runtimeHealth");
+  if (!node) return;
+  try {
+    const status = await (await fetch("/api/status")).json();
+    const camera = status.camera?.state || "off";
+    const voice = status.voice?.state || "off";
+    const pipeline = status.pipeline?.state || "idle";
+    node.textContent = `runtime: camera ${camera} · voice ${voice} · pipeline ${pipeline}`;
+    node.className = "runtime-health " + (
+      [camera, voice, pipeline].includes("error") ? "bad" : ""
+    );
+  } catch {
+    node.textContent = "runtime: unavailable";
+    node.className = "runtime-health bad";
+  }
+}
+
 // ───────────── starfield background ─────────────
 function starfield() {
   const c = $("stars");
@@ -330,3 +423,6 @@ function starfield() {
 $("ringThreshold").style.transform = `rotate(${PASS * 360 + 90}deg)`;
 starfield();
 connect();
+refreshRuntimeHealth();
+setInterval(refreshRuntimeHealth, 2000);
+setupModal();

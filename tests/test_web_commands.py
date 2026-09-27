@@ -88,3 +88,12 @@ def test_gemini_none_yields_no_intent():
 
 def test_gemini_rejects_unknown_action():
     assert FakeGemini({"action": "format_disk"}).decide(VoiceEvent(text="wipe it")) is None
+
+
+def test_gemini_rejects_invalid_confidence_and_parameters():
+    assert FakeGemini({
+        "action": "mute", "parameters": [], "confidence": 0.9,
+    }).decide(VoiceEvent(text="mute")) is None
+    assert FakeGemini({
+        "action": "mute", "parameters": {}, "confidence": 1.5,
+    }).decide(VoiceEvent(text="mute")) is None

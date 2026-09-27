@@ -17,6 +17,12 @@ web = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
+voice = [
+    "elevenlabs>=1.0",
+]
+gemini = [
+    "google-genai>=1.0",
+]
 tui = [
     "textual>=0.60",
 ]
