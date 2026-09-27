@@ -35,7 +35,7 @@ def test_move_window_maps_direction():
     LinuxController(runner=fake_runner(calls)).execute(
         Intent(action="move_window", parameters={"direction": "left"}, confidence=1.0)
     )
-    assert calls == [["hyprctl", "dispatch", "movewindow", "l"]]
+    assert calls == [["hyprctl", "dispatch", "swapwindow", "l"]]
 
 
 def test_resize_window_shrink():

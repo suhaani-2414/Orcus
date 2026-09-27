@@ -62,7 +62,9 @@ class LinuxController(OSController):
             "close_app": lambda p: ["hyprctl", "dispatch", "killactive"],
             "focus_window": lambda p: ["hyprctl", "dispatch", "cyclenext"],
             "move_window": lambda p: [
-                "hyprctl", "dispatch", "movewindow",
+                # swapwindow visibly swaps with the tiled neighbor; movewindow
+                # silently no-ops in dwindle when there's no space that way.
+                "hyprctl", "dispatch", "swapwindow",
                 {"left": "l", "right": "r", "up": "u", "down": "d"}[p.get("direction", "right")],
             ],
             "resize_window": lambda p: [
