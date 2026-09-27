@@ -4,145 +4,122 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Orcus — hands-free control</title>
-<style>
-  :root {
-    --bg: #0d1117; --panel: #161b22; --line: #30363d;
-    --text: #e6edf3; --muted: #8b949e; --accent: #ff9d3b;
-    --ok: #3fb950; --bad: #f85149; --warn: #d29922; --idle: #6e7681;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex; flex-direction: column; align-items: center;
-    min-height: 100vh; padding: 2rem 1rem;
-  }
-  h1 { font-size: 2rem; margin: 0 0 .25rem; display: flex; align-items: center; gap: .6rem; }
-  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--idle); }
-  .dot.live { background: var(--ok); box-shadow: 0 0 12px var(--ok); }
-  .sub { color: var(--muted); margin: 0 0 2rem; font-size: 1.05rem; }
-
-  .card {
-    width: min(680px, 95vw); background: var(--panel);
-    border: 1px solid var(--line); border-radius: 16px; padding: 1.75rem 2rem;
-  }
-  .status-row { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 1.5rem; font-size: 1.05rem; }
-  .label { color: var(--accent); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: .85rem; }
-
-  .heard { font-size: 1.9rem; font-weight: 600; margin: .3rem 0 1.5rem; min-height: 2.4rem; }
-  .modality { font-size: 1.4rem; }
-
-  .decision { font-size: 2.4rem; font-weight: 800; margin: .3rem 0; min-height: 2.8rem; }
-  .decision.none { color: var(--muted); font-weight: 500; font-size: 1.6rem; }
-
-  .bar { height: 22px; background: #21262d; border-radius: 11px; overflow: hidden; margin: .6rem 0 .3rem; }
-  .bar > span { display: block; height: 100%; width: 0%; background: var(--ok); transition: width .4s ease, background .3s; border-radius: 11px; }
-  .conf-note { font-size: 1.05rem; min-height: 1.4rem; }
-
-  .exec { font-size: 1.6rem; font-weight: 700; margin-top: .3rem; min-height: 2rem; }
-  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .muted { color: var(--muted); }
-
-  .section + .section { margin-top: 1.4rem; }
-  footer { color: var(--muted); margin-top: 1.5rem; font-size: .9rem; }
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <h1><span id="dot" class="dot"></span> Orcus</h1>
-  <p class="sub">Hands-free computer control · voice &amp; gesture</p>
+  <!-- Background layers: starfield canvas, aurora glow, perspective grid -->
+  <canvas id="stars" aria-hidden="true"></canvas>
+  <div class="aurora" aria-hidden="true"></div>
+  <div class="grid-floor" aria-hidden="true"></div>
 
-  <main class="card" aria-live="polite">
-    <div class="status-row">
-      <span id="platform">Platform: —</span>
-      <span id="status">Status: connecting…</span>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="9" class="logo-core" />
+        <ellipse cx="24" cy="24" rx="21" ry="8" class="logo-orbit" transform="rotate(-25 24 24)" />
+        <circle cx="42" cy="15" r="2.4" class="logo-moon" />
+      </svg>
+      <div>
+        <h1>ORCUS</h1>
+        <p class="tagline">Hands-free control · voice · gesture · keys</p>
+      </div>
     </div>
+    <div class="conn" id="conn">
+      <span class="conn-dot" id="dot"></span>
+      <span id="status">Connecting…</span>
+      <span class="conn-sep">/</span>
+      <span id="platform" class="mono">—</span>
+    </div>
+  </header>
 
-    <div class="section">
-      <div class="label">Heard / Recognized</div>
-      <div class="heard"><span id="modality" class="modality"></span> <span id="heard">—</span></div>
-    </div>
+  <main class="layout">
+    <!-- Hero: what was heard + the pipeline it travelled through -->
+    <section class="panel hero" id="hero" aria-live="polite">
+      <div class="panel-label"><span class="tick"></span>Signal in</div>
+      <div class="signal">
+        <div class="modality" id="modality" aria-hidden="true"></div>
+        <div>
+          <div class="modality-name mono" id="modalityName">awaiting input</div>
+          <div class="heard" id="heard">—</div>
+        </div>
+      </div>
 
-    <div class="section">
-      <div class="label">Decision</div>
-      <div id="decision" class="decision none">—</div>
-      <div class="bar"><span id="bar"></span></div>
-      <div id="confnote" class="conf-note"></div>
-    </div>
+      <ol class="pipeline" id="pipeline" aria-label="Pipeline stages">
+        <li class="node" data-stage="input"><span class="node-ring"></span><span class="node-name">Input</span><span class="node-state mono">—</span></li>
+        <li class="link"><span></span></li>
+        <li class="node" data-stage="laya"><span class="node-ring"></span><span class="node-name">Laya</span><span class="node-state mono">—</span></li>
+        <li class="link"><span></span></li>
+        <li class="node" data-stage="policy"><span class="node-ring"></span><span class="node-name">Policy</span><span class="node-state mono">—</span></li>
+        <li class="link"><span></span></li>
+        <li class="node" data-stage="exec"><span class="node-ring"></span><span class="node-name">Execute</span><span class="node-state mono">—</span></li>
+      </ol>
+    </section>
 
-    <div class="section">
-      <div class="label">Result</div>
-      <div id="exec" class="exec muted">—</div>
-    </div>
+    <!-- Decision + confidence -->
+    <section class="panel decision-panel">
+      <div class="panel-label"><span class="tick"></span>Decision</div>
+      <div class="decision-body">
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+            <defs>
+              <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="var(--cyan)" />
+                <stop offset="100%" stop-color="var(--violet)" />
+              </linearGradient>
+            </defs>
+            <circle cx="60" cy="60" r="52" class="ring-track" />
+            <circle cx="60" cy="60" r="52" class="ring-fill" id="ringFill" />
+            <line x1="60" y1="2" x2="60" y2="14" class="ring-threshold" id="ringThreshold" />
+          </svg>
+          <div class="ring-label">
+            <span class="ring-pct mono" id="pct">--</span>
+            <span class="ring-sub">confidence</span>
+          </div>
+        </div>
+        <div class="decision-text">
+          <div class="decision" id="decision">—</div>
+          <div class="chips" id="params"></div>
+          <div class="conf-note" id="confnote"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Result -->
+    <section class="panel result-panel">
+      <div class="panel-label"><span class="tick"></span>Result</div>
+      <div class="exec" id="exec">—</div>
+      <div class="policy mono" id="policy"></div>
+    </section>
+
+    <!-- Side rail: session stats + event log -->
+    <aside class="rail">
+      <section class="panel stats-panel">
+        <div class="panel-label"><span class="tick"></span>Session</div>
+        <div class="stats">
+          <div class="stat"><span class="stat-num mono" id="sTotal">0</span><span class="stat-lbl">events</span></div>
+          <div class="stat"><span class="stat-num mono ok" id="sAllowed">0</span><span class="stat-lbl">executed</span></div>
+          <div class="stat"><span class="stat-num mono bad" id="sBlocked">0</span><span class="stat-lbl">blocked</span></div>
+          <div class="stat"><span class="stat-num mono" id="sAvg">--</span><span class="stat-lbl">avg conf</span></div>
+        </div>
+        <div class="split" aria-label="Inputs by modality">
+          <div class="split-row"><span>Voice</span><div class="split-bar"><span id="bVoice"></span></div><span class="mono" id="nVoice">0</span></div>
+          <div class="split-row"><span>Gesture</span><div class="split-bar"><span id="bGesture"></span></div><span class="mono" id="nGesture">0</span></div>
+          <div class="split-row"><span>Keys</span><div class="split-bar"><span id="bKeyboard"></span></div><span class="mono" id="nKeyboard">0</span></div>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-label"><span class="tick"></span>Event stream</div>
+        <ul class="log" id="log"></ul>
+      </section>
+    </aside>
   </main>
 
-  <footer>🔊 spoken feedback on · live via WebSocket</footer>
+  <footer class="foot mono">spoken feedback on · live via websocket</footer>
 
-<script>
-  const PASS = 0.70;
-  const ICON = { voice: "🎤", gesture: "✋", keyboard: "⌨️" };
-  const EXEC_CLASS = { success: "ok", error: "bad", unsupported: "warn", skipped: "muted" };
-  const $ = id => document.getElementById(id);
-
-  function rawText(raw) {
-    if (!raw) return "";
-    if (raw.type === "voice") return `“${raw.text}”`;
-    if (raw.type === "gesture") return raw.name;
-    if (raw.type === "keyboard") return raw.key;
-    return JSON.stringify(raw);
-  }
-
-  let lastSpoken = "";
-  function speak(text) {
-    if (!("speechSynthesis" in window) || text === lastSpoken) return;
-    lastSpoken = text;
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.05;
-    speechSynthesis.speak(u);
-  }
-
-  function render(e) {
-    $("platform").textContent = "Platform: " + e.platform;
-    $("status").textContent = "Status: Listening";
-    $("dot").classList.add("live");
-
-    $("modality").textContent = ICON[e.input_type] || "•";
-    $("heard").textContent = rawText(e.raw_input);
-
-    const dec = $("decision");
-    if (e.decision) { dec.textContent = e.decision; dec.classList.remove("none"); }
-    else { dec.textContent = "— no matching action"; dec.classList.add("none"); }
-
-    const pct = Math.round((e.confidence || 0) * 100);
-    $("bar").style.width = pct + "%";
-    const note = $("confnote");
-    if (e.confidence == null) { note.textContent = ""; }
-    else if (e.confidence >= PASS) {
-      $("bar").style.background = "var(--ok)";
-      note.innerHTML = `<span class="ok">confidence ${pct}% ✓ above threshold</span>`;
-    } else {
-      $("bar").style.background = "var(--bad)";
-      note.innerHTML = `<span class="bad">confidence ${pct}% ✗ below ${Math.round(PASS*100)}%</span>`;
-    }
-
-    const ex = $("exec");
-    ex.textContent = e.execution;
-    ex.className = "exec " + (EXEC_CLASS[e.execution] || "");
-
-    // Spoken confirmation only for real, successful actions (accessibility).
-    if (e.execution === "success" && e.decision) {
-      speak(e.decision.replace(/_/g, " "));
-    }
-  }
-
-  function connect() {
-    const ws = new WebSocket(`ws://${location.host}/ws`);
-    ws.onmessage = ev => render(JSON.parse(ev.data));
-    ws.onclose = () => {
-      $("status").textContent = "Status: reconnecting…";
-      $("dot").classList.remove("live");
-      setTimeout(connect, 1000);
-    };
-  }
-  connect();
-</script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
