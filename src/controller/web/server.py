@@ -13,6 +13,7 @@ Run:  python -m controller.web        (serves http://127.0.0.1:8000)
 from __future__ import annotations
 
 import asyncio
+import os
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -89,9 +90,12 @@ async def _demo_loop() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    task = asyncio.create_task(_demo_loop())
+    # Scripted demo runs by default; disable with ORCUS_DEMO=0 for a clean
+    # voice/gesture session where only real events appear.
+    task = asyncio.create_task(_demo_loop()) if os.environ.get("ORCUS_DEMO", "1") != "0" else None
     yield
-    task.cancel()
+    if task:
+        task.cancel()
 
 
 app = FastAPI(lifespan=_lifespan)
@@ -114,3 +118,64 @@ async def ws(websocket: WebSocket) -> None:
             await websocket.receive_text()  # keep the socket open
     except WebSocketDisconnect:
         _clients.discard(websocket)
+
+
+# --- Voice: /listen records a clip, transcribes (ElevenLabs Scribe), runs it
+# through the real Laya pipeline, and broadcasts the result to all tabs. ---
+
+_voice_pipeline = None
+_recognizer = None
+
+
+def _voice_observer(entry: dict) -> None:
+    _latest.clear()
+    _latest.update(entry)
+
+
+def _get_voice_pipeline() -> Pipeline:
+    """Real Laya pipeline for voice. Dry-run unless ORCUS_EXECUTE=1. Built lazily
+    (loads the model) so the server starts fast and only pays the cost on use."""
+    global _voice_pipeline
+    if _voice_pipeline is None:
+        from controller.main import build_engine, load_config
+
+        if os.environ.get("ORCUS_EXECUTE") == "1":
+            from controller.os.factory import get_os_controller
+
+            controller: OSController = get_os_controller()
+        else:
+            controller = _DryRun()
+        engine = build_engine(load_config(), use_laya=True)
+        _voice_pipeline = Pipeline(
+            engine, PolicyEngine(platform=controller.platform), controller,
+            AuditLog(stream=None), observer=_voice_observer,
+        )
+    return _voice_pipeline
+
+
+def _get_recognizer():
+    global _recognizer
+    if _recognizer is None:
+        from controller.inputs.voice import ScribeRecognizer
+
+        _recognizer = ScribeRecognizer()
+    return _recognizer
+
+
+@app.post("/listen")
+async def listen() -> dict:
+    try:
+        recognizer = _get_recognizer()  # raises if ELEVENLABS_API_KEY is unset
+    except RuntimeError as e:
+        return {"ok": False, "error": str(e)}
+
+    # Recording + STT + model inference are blocking; keep them off the event loop.
+    text = await asyncio.to_thread(recognizer.listen)
+    if not text:
+        return {"ok": False, "transcript": ""}
+
+    await asyncio.to_thread(_get_voice_pipeline().handle, VoiceEvent(text=text))
+    entry = dict(_latest)
+    _history.append(entry)
+    await _broadcast(entry)
+    return {"ok": True, "transcript": text}
