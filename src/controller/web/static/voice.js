@@ -1,22 +1,23 @@
-// Orcus voice control — hold-to-talk mic button + spacebar.
-// Recording lasts only while you hold (press → /listen/start, release →
-// /listen/stop), so the clip is as short as your command — cutting the old
-// fixed 4s recording and the upload/STT time that scales with clip length.
-// Results arrive over the existing WebSocket (handled by app.js); this file
-// only drives the button, so it doesn't collide with the dashboard's app.js.
+// Orcus voice control — click (or Spacebar) to START recording, click again to
+// STOP and transcribe. Toggle, not hold: a hold-to-talk click on localhost
+// records almost nothing (start resolves in ms), so toggle is robust and clear.
+// Recording still lasts only as long as you leave it on, so the clip stays short.
+// Results arrive over the existing WebSocket (handled by app.js); this file only
+// drives the button, so it doesn't collide with the dashboard's app.js.
 (function () {
+  const MAX_SECONDS = 12;  // safety auto-stop so it can't record forever
+
   const btn = document.createElement("button");
   btn.id = "mic";
   btn.type = "button";
-  btn.setAttribute("aria-label", "Hold to speak a command");
-  btn.textContent = "🎤 Hold to talk";
+  btn.setAttribute("aria-label", "Click to start talking, click again to stop");
   Object.assign(btn.style, {
     position: "fixed", right: "24px", bottom: "24px", zIndex: "60",
     padding: "14px 24px", fontSize: "1.05rem", fontWeight: "700",
     color: "#04121a", background: "linear-gradient(135deg,#22e4ff,#8b5cf6)",
     border: "none", borderRadius: "999px", cursor: "pointer",
     fontFamily: "inherit", boxShadow: "0 6px 26px rgba(34,228,255,.45)",
-    userSelect: "none", touchAction: "none",
+    userSelect: "none",
   });
 
   const hint = document.createElement("div");
@@ -28,57 +29,57 @@
 
   document.body.append(btn, hint);
 
-  let recording = false;
-  let starting = false;
+  let state = "idle";  // idle | recording | busy
+  let autostop = null;
+
+  function paint() {
+    if (state === "recording") {
+      btn.textContent = "● Recording — click to stop";
+      btn.style.background = "#f85149";
+    } else if (state === "busy") {
+      btn.textContent = "… transcribing";
+      btn.style.background = "#8b949e";
+    } else {
+      btn.textContent = "🎤 Click to talk";
+      btn.style.background = "linear-gradient(135deg,#22e4ff,#8b5cf6)";
+    }
+  }
 
   async function start() {
-    if (recording || starting) return;
-    starting = true;
-    btn.textContent = "● Listening…";
-    btn.style.background = "#f85149";
-    hint.textContent = "listening — release to send";
+    state = "busy"; paint();
+    hint.textContent = "starting…";
     try {
-      const r = await fetch("/listen/start", { method: "POST" });
-      const d = await r.json();
-      if (!d.ok) { hint.textContent = d.error || "mic error"; reset(); }
-      else recording = true;
-    } catch { hint.textContent = "start failed"; reset(); }
-    finally { starting = false; }
+      const d = await (await fetch("/listen/start", { method: "POST" })).json();
+      if (!d.ok) { hint.textContent = d.error || "mic error"; state = "idle"; paint(); return; }
+      state = "recording"; paint();
+      hint.textContent = "recording — speak, then click to stop";
+      autostop = setTimeout(stop, MAX_SECONDS * 1000);
+    } catch { hint.textContent = "start failed"; state = "idle"; paint(); }
   }
 
   async function stop() {
-    if (!recording) return;
-    recording = false;
-    btn.textContent = "… transcribing";
+    if (autostop) { clearTimeout(autostop); autostop = null; }
+    state = "busy"; paint();
     hint.textContent = "transcribing…";
     try {
-      const r = await fetch("/listen/stop", { method: "POST" });
-      const d = await r.json();
+      const d = await (await fetch("/listen/stop", { method: "POST" })).json();
       hint.textContent = d.ok ? `heard: "${d.transcript}"` : (d.error || "nothing transcribed");
     } catch { hint.textContent = "stop failed"; }
-    finally { reset(); }
+    state = "idle"; paint();
   }
 
-  function reset() {
-    btn.textContent = "🎤 Hold to talk";
-    btn.style.background = "linear-gradient(135deg,#22e4ff,#8b5cf6)";
+  function toggle() {
+    if (state === "idle") start();
+    else if (state === "recording") stop();
+    // ignore clicks while busy
   }
 
-  // Mouse / touch hold
-  btn.addEventListener("mousedown", start);
-  btn.addEventListener("touchstart", e => { e.preventDefault(); start(); });
-  addEventListener("mouseup", stop);
-  btn.addEventListener("touchend", e => { e.preventDefault(); stop(); });
-
-  // Spacebar hold-to-talk (ignore auto-repeat and typing fields)
+  paint();
+  btn.addEventListener("click", toggle);
   addEventListener("keydown", e => {
     if (e.code === "Space" && !e.repeat && !/input|textarea/i.test(e.target.tagName)) {
-      e.preventDefault(); start();
-    }
-  });
-  addEventListener("keyup", e => {
-    if (e.code === "Space" && !/input|textarea/i.test(e.target.tagName)) {
-      e.preventDefault(); stop();
+      e.preventDefault();
+      toggle();
     }
   });
 })();
