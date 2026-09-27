@@ -91,7 +91,7 @@ class ChunkRecognizer:
 
 def test_always_on_requires_wake_phrase():
     source = AlwaysOnVoiceInput(
-        ChunkRecognizer(["volume up", "orca volume down"]),
+        ChunkRecognizer(["volume up", "omega volume down"]),
         chunk_seconds=0.01,
     )
     event = next(source.events())
@@ -100,7 +100,7 @@ def test_always_on_requires_wake_phrase():
 
 def test_always_on_supports_two_step_activation():
     source = AlwaysOnVoiceInput(
-        ChunkRecognizer(["hey orca", "switch to workspace 3"]),
+        ChunkRecognizer(["hey omega", "switch to workspace 3"]),
         chunk_seconds=0.01,
     )
     event = next(source.events())
@@ -113,7 +113,7 @@ def test_always_on_ignores_unrelated_after_activation_timeout(monkeypatch):
     now = iter([0.0, 10.0, 20.0])
     monkeypatch.setattr(voice.time, "monotonic", lambda: next(now))
     source = AlwaysOnVoiceInput(
-        ChunkRecognizer(["orca", "volume up", "orca volume down"]),
+        ChunkRecognizer(["omega", "volume up", "omega volume down"]),
         chunk_seconds=0.01,
     )
     event = next(source.events())

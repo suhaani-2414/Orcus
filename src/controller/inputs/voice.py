@@ -282,7 +282,7 @@ class AlwaysOnVoiceInput(InputSource):
         self,
         recognizer,
         *,
-        wake_phrases: tuple[str, ...] = ("orca", "hey orca"),
+        wake_phrases: tuple[str, ...] = ("omega", "hey omega"),
         chunk_seconds: float = 4.0,  # fit "computer <command>" in one window
         activation_timeout: float = 8.0,
         on_status=None,
@@ -318,6 +318,9 @@ class AlwaysOnVoiceInput(InputSource):
         elif "orca" in self.wake_phrases:
             variants = ("orca", "orka", "arca", "orcah", "or car", "or ca",
                         "or can", "or kar", "or ka", "orcas", "ourka")
+        elif "omega" in self.wake_phrases:
+            variants = ("omega", "omaga", "omegah", "omegha", "o mega",
+                        "oh mega", "omga", "amiga", "omegas")
         for variant in variants:
             if normalized == variant:
                 return ""
