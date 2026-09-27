@@ -4,9 +4,9 @@
 # OS adapter decides how to execute it. Keep OS specifics out of this file.
 
 # Reject any decision below this confidence unless the action overrides it.
-# Kept lenient: the fine-tuned model abstains on unrelated speech, so this is a
-# secondary guard, not the main filter.
-min_confidence: 0.5
+# Strict: the fine-tuned model abstains on unrelated speech (that's the main
+# filter), so this only gates borderline valid commands.
+min_confidence: 0.65
 
 # Gesture name -> action. The gesture recognizer stays generic; only this map
 # ties a gesture to meaning.
