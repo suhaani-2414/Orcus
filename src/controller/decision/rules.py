@@ -11,7 +11,7 @@ import re
 
 from controller.actions.registry import get_action
 from controller.decision.base import DecisionEngine
-from controller.decision.params import extract_app, extract_workspace
+from controller.decision.params import extract_app, extract_parameters, extract_workspace
 from controller.decision.schemas import (
     Event,
     GestureEvent,
@@ -82,9 +82,17 @@ class RuleBasedEngine(DecisionEngine):
             (r"\b(next workspace)\b", "next_workspace"),
             (r"\b(previous workspace)\b", "previous_workspace"),
             (r"\b(lock screen|lock the screen|lock)\b", "lock_screen"),
+            (r"\b(close|quit|kill)\b", "close_app"),
+            (r"\b(focus)\b", "focus_window"),
+            (r"\bmove\b", "move_window"),
+            (r"\b(resize|bigger|smaller|larger|shrink|grow|wider|narrower)\b", "resize_window"),
         ]
         for pattern, action in keyword_actions:
             if re.search(pattern, text) and get_action(action):
-                return Intent(action=action, confidence=0.9)
+                return Intent(
+                    action=action,
+                    parameters=extract_parameters(action, text),
+                    confidence=0.9,
+                )
 
         return None
