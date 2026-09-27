@@ -41,6 +41,16 @@ def test_rejects_low_confidence():
     assert "confidence" in d.reason
 
 
+def test_config_min_confidence_overrides_action_default():
+    # Global override from config lowers the gate below the registry default.
+    lenient = PolicyEngine(platform="linux", min_confidence=0.5)
+    assert lenient.evaluate(Intent(action="switch_workspace",
+                                   parameters={"workspace": 2}, confidence=0.57)).allowed
+    # And a stricter override rejects what the default would allow.
+    strict = PolicyEngine(platform="linux", min_confidence=0.9)
+    assert not strict.evaluate(Intent(action="mute", confidence=0.7)).allowed
+
+
 def test_unsupported_on_platform():
     # lock_screen is supported everywhere, but simulate an unknown platform.
     d = PolicyEngine(platform="plan9").evaluate(Intent(action="mute", confidence=0.95))

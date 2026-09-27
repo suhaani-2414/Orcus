@@ -110,16 +110,18 @@ def _get_voice_pipeline() -> Pipeline:
     if _voice_pipeline is None:
         from controller.main import build_engine, load_config
 
+        config = load_config()
         if os.environ.get("ORCUS_EXECUTE") == "1":
             from controller.os.factory import get_os_controller
 
             controller: OSController = get_os_controller()
         else:
             controller = _DryRun()
-        engine = build_engine(load_config(), use_laya=True)
+        engine = build_engine(config, use_laya=True)
         _voice_pipeline = Pipeline(
-            engine, PolicyEngine(platform=controller.platform), controller,
-            AuditLog(stream=None), observer=_voice_observer,
+            engine,
+            PolicyEngine(platform=controller.platform, min_confidence=config.get("min_confidence")),
+            controller, AuditLog(stream=None), observer=_voice_observer,
         )
     return _voice_pipeline
 

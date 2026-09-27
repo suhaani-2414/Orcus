@@ -36,9 +36,17 @@ class PolicyDecision(BaseModel):
 
 
 class PolicyEngine:
-    def __init__(self, platform: str, confirm: ConfirmFn | None = None):
+    def __init__(
+        self,
+        platform: str,
+        confirm: ConfirmFn | None = None,
+        min_confidence: float | None = None,
+    ):
         self.platform = platform
         self.confirm = confirm or _deny
+        # Global confidence threshold from config; overrides each action's
+        # registry default when set. None -> fall back to the per-action value.
+        self.min_confidence = min_confidence
 
     def evaluate(self, intent: Intent) -> PolicyDecision:
         spec = get_action(intent.action)
@@ -50,11 +58,11 @@ class PolicyEngine:
         except ValidationError as e:
             return PolicyDecision(allowed=False, reason=f"invalid parameters: {e.errors()}")
 
-        if intent.confidence < spec.min_confidence:
+        threshold = spec.min_confidence if self.min_confidence is None else self.min_confidence
+        if intent.confidence < threshold:
             return PolicyDecision(
                 allowed=False,
-                reason=f"confidence {intent.confidence:.2f} below "
-                f"threshold {spec.min_confidence:.2f}",
+                reason=f"confidence {intent.confidence:.2f} below threshold {threshold:.2f}",
             )
 
         if self.platform not in spec.supported_platforms:

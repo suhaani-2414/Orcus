@@ -6,7 +6,7 @@
 # Reject any decision below this confidence unless the action overrides it.
 # Strict: the fine-tuned model abstains on unrelated speech (that's the main
 # filter), so this only gates borderline valid commands.
-min_confidence: 0.65
+min_confidence: 0.50
 
 # Gesture name -> action. The gesture recognizer stays generic; only this map
 # ties a gesture to meaning.

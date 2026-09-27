@@ -90,7 +90,7 @@ def main() -> None:
     )
 
     engine = build_engine(config, use_laya=args.engine == "laya")
-    policy = PolicyEngine(platform=platform)
+    policy = PolicyEngine(platform=platform, min_confidence=config.get("min_confidence"))
     audit = AuditLog()  # stdout
     pipeline = Pipeline(engine, policy, controller, audit)
 
