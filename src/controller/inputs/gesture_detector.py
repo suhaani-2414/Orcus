@@ -19,7 +19,7 @@ MIN_TRAVEL = 0.22
 MAX_DURATION = 0.6
 MAX_CROSS_RATIO = 0.6  # off-axis travel must stay below this * main-axis travel
 COOLDOWN_SECONDS = 0.7
-HAND_TIMEOUT = 0.3
+HAND_TIMEOUT = 0.5  # tolerate brief detection drops mid-swipe (motion blur)
 
 
 class SwipeDetector:

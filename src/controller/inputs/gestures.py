@@ -45,8 +45,8 @@ class GestureInput(InputSource):
         hands = mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=1,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.7,
+            min_detection_confidence=0.5,  # lower = steadier tracking, less flicker
+            min_tracking_confidence=0.5,
         )
         detector = SwipeDetector()
         self._running = True
@@ -73,8 +73,9 @@ class GestureInput(InputSource):
                     if hit is not None:
                         name, confidence = hit
                         yield GestureEvent(name=name, confidence=confidence)
-                else:
-                    detector.mark_hand_lost(now)
+                # No else: a single dropped frame must NOT reset the buffer.
+                # SwipeDetector.update() already resets when consecutive hand
+                # frames are >HAND_TIMEOUT apart (real absence, not flicker).
 
                 if debug and frames % 30 == 0:
                     print(f"gesture debug: frames={frames} hands_seen={hands_seen}", flush=True)
