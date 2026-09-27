@@ -112,6 +112,44 @@ async def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/api/actions")
+async def actions() -> dict:
+    """The action vocabulary for the dashboard's Actions modal.
+
+    Read straight from the registry and config, so the modal never drifts from
+    what the policy layer actually allows."""
+    from controller.actions.registry import REGISTRY
+    from controller.main import load_config
+
+    config = load_config()
+    threshold = config.get("min_confidence")  # global override, may be None
+
+    def reverse(section: str) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for trigger, spec in (config.get(section) or {}).items():
+            out.setdefault(spec["action"], []).append(trigger)
+        return out
+
+    gestures, keys = reverse("gestures"), reverse("keyboard")
+    keep = ("type", "default", "minimum", "maximum", "pattern", "minLength")
+
+    items = []
+    for spec in REGISTRY.values():
+        props = spec.param_model.model_json_schema().get("properties", {})
+        items.append({
+            "name": spec.name,
+            "description": spec.description,
+            "min_confidence": threshold if threshold is not None else spec.min_confidence,
+            "destructive": spec.destructive,
+            "platforms": sorted(spec.supported_platforms),
+            "parameters": [{"name": n, **{k: v for k, v in p.items() if k in keep}}
+                           for n, p in props.items()],
+            "gestures": gestures.get(spec.name, []),
+            "keys": keys.get(spec.name, []),
+        })
+    return {"threshold": threshold, "actions": items}
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
