@@ -66,4 +66,15 @@ def extract_parameters(action: str, text: str) -> dict:
     if action == "open_app":
         app = extract_app(text)
         return {"application": app} if app else {}
+    if action == "move_window":
+        for d in ("left", "right", "up", "down"):
+            if d in text:
+                return {"direction": d}
+        return {}  # model default (right)
+    if action == "resize_window":
+        if any(w in text for w in ("smaller", "shrink", "reduce", "narrower")):
+            return {"mode": "shrink"}
+        if any(w in text for w in ("bigger", "larger", "grow", "expand", "wider")):
+            return {"mode": "grow"}
+        return {}  # model default (grow)
     return {}

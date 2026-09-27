@@ -46,6 +46,16 @@ class LinuxController(OSController):
             "next_track": lambda p: ["playerctl", "next"],
             "previous_track": lambda p: ["playerctl", "previous"],
             "lock_screen": lambda p: ["loginctl", "lock-session"],
+            "close_app": lambda p: ["hyprctl", "dispatch", "killactive"],
+            "focus_window": lambda p: ["hyprctl", "dispatch", "cyclenext"],
+            "move_window": lambda p: [
+                "hyprctl", "dispatch", "movewindow",
+                {"left": "l", "right": "r", "up": "u", "down": "d"}[p.get("direction", "right")],
+            ],
+            "resize_window": lambda p: [
+                "hyprctl", "dispatch", "resizeactive",
+                *(["100", "100"] if p.get("mode", "grow") == "grow" else ["-100", "-100"]),
+            ],
         }
 
     def execute(self, intent: Intent) -> ExecutionResult:

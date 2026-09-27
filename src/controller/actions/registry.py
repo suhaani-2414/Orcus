@@ -44,6 +44,14 @@ class VolumeParams(ActionParams):
     amount: int = Field(default=5, ge=1, le=100)
 
 
+class MoveWindowParams(ActionParams):
+    direction: str = Field(default="right", pattern="^(left|right|up|down)$")
+
+
+class ResizeWindowParams(ActionParams):
+    mode: str = Field(default="grow", pattern="^(grow|shrink)$")
+
+
 @dataclass(frozen=True)
 class ActionSpec:
     name: str
@@ -70,8 +78,8 @@ REGISTRY: dict[str, ActionSpec] = {
         _spec("open_app", "Launch an application", param_model=OpenAppParams),
         _spec("close_app", "Close the focused application"),
         _spec("focus_window", "Focus a window"),
-        _spec("move_window", "Move the focused window"),
-        _spec("resize_window", "Resize the focused window"),
+        _spec("move_window", "Move the focused window", param_model=MoveWindowParams),
+        _spec("resize_window", "Resize the focused window", param_model=ResizeWindowParams),
         _spec("switch_workspace", "Switch to a workspace by number",
               param_model=SwitchWorkspaceParams),
         _spec("next_workspace", "Switch to the next workspace"),
