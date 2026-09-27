@@ -62,14 +62,62 @@ class ScribeRecognizer(SpeechRecognizer):
             self._client = ElevenLabs(api_key=self.api_key)
         return self._client
 
+    def transcribe(self, wav_path: str) -> str:
+        """Send an existing WAV to Scribe and return the text."""
+        with open(wav_path, "rb") as f:
+            result = self._get_client().speech_to_text.convert(
+                model_id=MODEL_ID, file=f, language_code=self.language_code,
+            )
+        return (getattr(result, "text", "") or "").strip()
+
+    def warm(self) -> None:
+        """Instantiate the client ahead of time so the first real call doesn't
+        pay client/TLS setup. Best-effort."""
+        try:
+            self._get_client()
+        except Exception:
+            pass
+
     def listen(self) -> str:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
             _record_wav(tmp.name, self.record_seconds)
-            with open(tmp.name, "rb") as f:
-                result = self._get_client().speech_to_text.convert(
-                    model_id=MODEL_ID, file=f, language_code=self.language_code,
-                )
-        return (getattr(result, "text", "") or "").strip()
+            return self.transcribe(tmp.name)
+
+
+class MicRecorder:
+    """Start/stop mic recording for hold-to-talk: records until stopped, so the
+    clip is only as long as you speak (shorter clip = faster upload + STT)."""
+
+    def __init__(self):
+        self._proc: subprocess.Popen | None = None
+        self._path: str | None = None
+
+    def start(self) -> None:
+        if self._proc is not None:
+            return
+        self._path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+        if shutil.which("arecord"):
+            cmd = ["arecord", "-q", "-f", "S16_LE", "-r", "16000", "-c", "1", self._path]
+        elif shutil.which("ffmpeg"):
+            cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "pulse",
+                   "-i", "default", "-ar", "16000", "-ac", "1", "-y", self._path]
+        else:
+            raise RuntimeError("no mic recorder found (need arecord or ffmpeg)")
+        self._proc = subprocess.Popen(cmd)
+
+    def stop(self) -> str | None:
+        """Stop recording; return the WAV path (or None if not recording)."""
+        if self._proc is None:
+            return None
+        self._proc.terminate()
+        try:
+            self._proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+            self._proc.wait()
+        self._proc = None
+        path, self._path = self._path, None
+        return path
 
 
 class VoiceInput(InputSource):
