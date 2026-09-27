@@ -6,6 +6,7 @@ together and records every step. Nothing here knows which OS is underneath.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable
 
 from controller.audit.log import AuditLog
@@ -17,6 +18,13 @@ from controller.policy.validator import PolicyEngine
 # Called after each handled step with the audit entry dict. Lets a UI observe
 # the pipeline without the pipeline knowing anything about the UI.
 Observer = Callable[[dict], None]
+
+
+@dataclass
+class PendingConfirmation:
+    event_type: str
+    raw: dict
+    intent: object
 
 
 class Pipeline:
@@ -33,6 +41,7 @@ class Pipeline:
         self.controller = controller
         self.audit = audit
         self.observer = observer
+        self._pending: PendingConfirmation | None = None
 
     def handle(self, event: Event) -> ExecutionResult:
         raw = event.model_dump()
@@ -43,6 +52,17 @@ class Pipeline:
             return ExecutionResult(status="error", detail="no intent produced")
 
         decision = self.policy.evaluate(intent)
+        if decision.requires_confirmation:
+            intent.parameters = decision.normalized_parameters
+            self._pending = PendingConfirmation(event.type, raw, intent)
+            self._audit(
+                event.type, raw, intent.action, intent.parameters,
+                intent.confidence, decision.reason, "pending",
+            )
+            return ExecutionResult(
+                status="confirmation_required",
+                detail=f"confirm action '{intent.action}' to continue",
+            )
         if not decision.allowed:
             self._audit(
                 event.type, raw, intent.action, intent.parameters,
@@ -58,6 +78,31 @@ class Pipeline:
             intent.confidence, "allowed", result.status,
         )
         return result
+
+    def confirm_pending(self, confirmed: bool) -> ExecutionResult:
+        pending = self._pending
+        self._pending = None
+        if pending is None:
+            return ExecutionResult(status="error", detail="no action is awaiting confirmation")
+        if not confirmed:
+            self._audit(
+                pending.event_type, pending.raw, pending.intent.action,
+                pending.intent.parameters, pending.intent.confidence,
+                "confirmation cancelled", "cancelled",
+            )
+            return ExecutionResult(status="cancelled", detail="action cancelled")
+
+        result = self.controller.execute(pending.intent)
+        self._audit(
+            pending.event_type, pending.raw, pending.intent.action,
+            pending.intent.parameters, pending.intent.confidence,
+            "confirmed", result.status,
+        )
+        return result
+
+    @property
+    def has_pending_confirmation(self) -> bool:
+        return self._pending is not None
 
     def _audit(self, input_type, raw, decision, params, confidence, policy, execution):
         entry = self.audit.record(

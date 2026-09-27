@@ -20,9 +20,15 @@ web = [
 tui = [
     "textual>=0.60",
 ]
+gesture = [
+    "mediapipe>=0.10",
+    "numpy>=1.24",
+    "scikit-learn>=1.8,<1.9",
+]
 
 [project.scripts]
 osctl = "controller.main:main"
+orcus = "controller.cli:orcus"
 
 [build-system]
 requires = ["hatchling"]

@@ -16,7 +16,7 @@ from controller.decision.schemas import Intent
 
 
 class ExecutionResult(BaseModel):
-    status: Literal["success", "error", "unsupported"]
+    status: Literal["success", "error", "unsupported", "confirmation_required", "cancelled"]
     detail: str = ""
 
 

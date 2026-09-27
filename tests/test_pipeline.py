@@ -54,3 +54,24 @@ def test_low_confidence_gesture_blocked_by_policy():
     result = build(ctrl).handle(GestureEvent(name="swipe_right", confidence=0.3))
     assert result.status == "error"
     assert ctrl.executed == []
+
+
+def test_destructive_action_waits_for_confirmation():
+    ctrl = RecordingController()
+    pipeline = build(ctrl)
+    result = pipeline.handle(VoiceEvent(text="lock the screen"))
+    assert result.status == "confirmation_required"
+    assert ctrl.executed == []
+
+    result = pipeline.confirm_pending(True)
+    assert result.status == "success"
+    assert ctrl.executed[0].action == "lock_screen"
+
+
+def test_destructive_action_can_be_cancelled():
+    ctrl = RecordingController()
+    pipeline = build(ctrl)
+    pipeline.handle(VoiceEvent(text="lock the screen"))
+    result = pipeline.confirm_pending(False)
+    assert result.status == "cancelled"
+    assert ctrl.executed == []

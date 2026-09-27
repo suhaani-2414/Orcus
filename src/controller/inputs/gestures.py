@@ -14,19 +14,29 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 from controller.decision.schemas import Event, GestureEvent
 from controller.inputs.base import InputSource
 from controller.inputs.gesture_detector import SwipeDetector
 
+MODEL_PATH = Path(__file__).resolve().parents[3] / "models" / "gesture_knn.pkl"
+
 
 class GestureInput(InputSource):
-    def __init__(self, camera_index: int = 0, show_window: bool = True, frame_sink=None):
+    def __init__(
+        self,
+        camera_index: int = 0,
+        show_window: bool = True,
+        frame_sink=None,
+        static_model: str | Path | None = MODEL_PATH,
+    ):
         self.camera_index = camera_index
         self.show_window = show_window
         # Optional callback(frame_bgr) called each frame (with landmarks drawn) —
         # used to stream a live preview without opening the camera twice.
         self.frame_sink = frame_sink
+        self.static_model = Path(static_model) if static_model else None
         self._running = False
 
     def stop(self) -> None:
@@ -35,6 +45,12 @@ class GestureInput(InputSource):
     def events(self) -> Iterator[Event]:
         import cv2
         import mediapipe as mp
+
+        static_classifier = None
+        if self.static_model and self.static_model.exists():
+            from controller.inputs.static_gestures import StaticGestureClassifier
+
+            static_classifier = StaticGestureClassifier(self.static_model)
 
         mp_hands = mp.solutions.hands
         mp_drawing = mp.solutions.drawing_utils
@@ -73,9 +89,16 @@ class GestureInput(InputSource):
                     if hit is not None:
                         name, confidence = hit
                         yield GestureEvent(name=name, confidence=confidence)
+                    if static_classifier is not None:
+                        static_hit = static_classifier.update(lm, now)
+                        if static_hit is not None:
+                            name, confidence = static_hit
+                            yield GestureEvent(name=name, confidence=confidence)
                 # No else: a single dropped frame must NOT reset the buffer.
                 # SwipeDetector.update() already resets when consecutive hand
                 # frames are >HAND_TIMEOUT apart (real absence, not flicker).
+                elif static_classifier is not None:
+                    static_classifier.reset()
 
                 if debug and frames % 30 == 0:
                     print(f"gesture debug: frames={frames} hands_seen={hands_seen}", flush=True)

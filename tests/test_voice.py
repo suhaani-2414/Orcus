@@ -6,7 +6,12 @@ import pytest
 
 from controller.audit.log import AuditLog
 from controller.decision.rules import RuleBasedEngine
-from controller.inputs.voice import ScribeRecognizer, SpeechRecognizer, VoiceInput
+from controller.inputs.voice import (
+    AlwaysOnVoiceInput,
+    ScribeRecognizer,
+    SpeechRecognizer,
+    VoiceInput,
+)
 from controller.os.base import ExecutionResult, OSController
 from controller.pipeline import Pipeline
 from controller.policy.validator import PolicyEngine
@@ -59,3 +64,42 @@ def test_scribe_recognizer_requires_api_key(monkeypatch):
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="ELEVENLABS_API_KEY"):
         ScribeRecognizer()
+
+
+class ChunkRecognizer:
+    def __init__(self, transcripts):
+        self.transcripts = iter(transcripts)
+
+    def listen_chunk(self, _seconds):
+        return next(self.transcripts, "")
+
+
+def test_always_on_requires_wake_phrase():
+    source = AlwaysOnVoiceInput(
+        ChunkRecognizer(["volume up", "Orcus volume down"]),
+        chunk_seconds=0.01,
+    )
+    event = next(source.events())
+    assert event.text == "volume down"
+
+
+def test_always_on_supports_two_step_activation():
+    source = AlwaysOnVoiceInput(
+        ChunkRecognizer(["hey orcus", "switch to workspace 3"]),
+        chunk_seconds=0.01,
+    )
+    event = next(source.events())
+    assert event.text == "switch to workspace 3"
+
+
+def test_always_on_ignores_unrelated_after_activation_timeout(monkeypatch):
+    import controller.inputs.voice as voice
+
+    now = iter([0.0, 10.0, 20.0])
+    monkeypatch.setattr(voice.time, "monotonic", lambda: next(now))
+    source = AlwaysOnVoiceInput(
+        ChunkRecognizer(["Orcus", "volume up", "Orcus volume down"]),
+        chunk_seconds=0.01,
+    )
+    event = next(source.events())
+    assert event.text == "volume down"

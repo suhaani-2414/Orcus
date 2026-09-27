@@ -1,85 +1,94 @@
-// Orcus voice control — click (or Spacebar) to START recording, click again to
-// STOP and transcribe. Toggle, not hold: a hold-to-talk click on localhost
-// records almost nothing (start resolves in ms), so toggle is robust and clear.
-// Recording still lasts only as long as you leave it on, so the clip stays short.
-// Results arrive over the existing WebSocket (handled by app.js); this file only
-// drives the button, so it doesn't collide with the dashboard's app.js.
+// Voice controls live in the header so they cannot cover dashboard content.
 (function () {
-  const MAX_SECONDS = 12;  // safety auto-stop so it can't record forever
+  const MAX_SECONDS = 12;
+  const btn = document.getElementById("mic");
+  const alwaysBtn = document.getElementById("alwaysListen");
+  const hint = document.getElementById("voiceHint");
+  if (!btn || !alwaysBtn || !hint) return;
 
-  const btn = document.createElement("button");
-  btn.id = "mic";
-  btn.type = "button";
-  btn.setAttribute("aria-label", "Click to start talking, click again to stop");
-  Object.assign(btn.style, {
-    position: "fixed", right: "24px", bottom: "24px", zIndex: "60",
-    padding: "14px 24px", fontSize: "1.05rem", fontWeight: "700",
-    color: "#04121a", background: "linear-gradient(135deg,#22e4ff,#8b5cf6)",
-    border: "none", borderRadius: "999px", cursor: "pointer",
-    fontFamily: "inherit", boxShadow: "0 6px 26px rgba(34,228,255,.45)",
-    userSelect: "none",
-  });
-
-  const hint = document.createElement("div");
-  Object.assign(hint.style, {
-    position: "fixed", right: "24px", bottom: "78px", zIndex: "60",
-    maxWidth: "300px", textAlign: "right", fontFamily: "monospace",
-    fontSize: ".82rem", color: "#8b949e", pointerEvents: "none",
-  });
-
-  document.body.append(btn, hint);
-
-  let state = "idle";  // idle | recording | busy
+  let state = "idle";
   let autostop = null;
+  let alwaysOn = false;
 
   function paint() {
-    if (state === "recording") {
-      btn.textContent = "● Recording — click to stop";
-      btn.style.background = "#f85149";
-    } else if (state === "busy") {
-      btn.textContent = "… transcribing";
-      btn.style.background = "#8b949e";
-    } else {
-      btn.textContent = "🎤 Click to talk";
-      btn.style.background = "linear-gradient(135deg,#22e4ff,#8b5cf6)";
-    }
+    btn.textContent = state === "recording" ? "● Stop recording"
+      : state === "busy" ? "… Transcribing" : "🎤 Talk";
+    btn.disabled = state === "busy";
+    alwaysBtn.textContent = alwaysOn ? "◉ Always listening — stop" : "◉ Always listen";
+    alwaysBtn.classList.toggle("voice-active", alwaysOn);
   }
 
   async function start() {
-    state = "busy"; paint();
-    hint.textContent = "starting…";
+    state = "busy"; paint(); hint.textContent = "starting microphone…";
     try {
-      const d = await (await fetch("/listen/start", { method: "POST" })).json();
-      if (!d.ok) { hint.textContent = d.error || "mic error"; state = "idle"; paint(); return; }
+      const result = await (await fetch("/listen/start", {method: "POST"})).json();
+      if (!result.ok) throw new Error(result.error || "microphone unavailable");
       state = "recording"; paint();
-      hint.textContent = "recording — speak, then click to stop";
+      hint.textContent = "speak, then press Stop";
       autostop = setTimeout(stop, MAX_SECONDS * 1000);
-    } catch { hint.textContent = "start failed"; state = "idle"; paint(); }
+    } catch (error) {
+      hint.textContent = error.message;
+      state = "idle"; paint();
+    }
   }
 
   async function stop() {
-    if (autostop) { clearTimeout(autostop); autostop = null; }
-    state = "busy"; paint();
-    hint.textContent = "transcribing…";
+    if (autostop) clearTimeout(autostop);
+    autostop = null;
+    state = "busy"; paint(); hint.textContent = "transcribing…";
     try {
-      const d = await (await fetch("/listen/stop", { method: "POST" })).json();
-      hint.textContent = d.ok ? `heard: "${d.transcript}"` : (d.error || "nothing transcribed");
-    } catch { hint.textContent = "stop failed"; }
+      const result = await (await fetch("/listen/stop", {method: "POST"})).json();
+      hint.textContent = result.ok ? `heard: "${result.transcript}"` : (result.error || "nothing heard");
+    } catch {
+      hint.textContent = "transcription request failed";
+    }
     state = "idle"; paint();
   }
 
-  function toggle() {
-    if (state === "idle") start();
-    else if (state === "recording") stop();
-    // ignore clicks while busy
+  async function toggleAlwaysOn() {
+    alwaysBtn.disabled = true;
+    const endpoint = alwaysOn ? "/api/voice/always-on/stop" : "/api/voice/always-on/start";
+    try {
+      const result = await (await fetch(endpoint, {method: "POST"})).json();
+      if (result.error || (!alwaysOn && !result.active)) {
+        throw new Error(result.error || "always-on listener did not start");
+      }
+      alwaysOn = result.active;
+      hint.textContent = alwaysOn
+        ? `say "${result.wake_word || "orcus"}" followed by a command`
+        : "always-on voice stopped";
+    } catch (error) {
+      hint.textContent = error.message;
+    } finally {
+      alwaysBtn.disabled = false;
+      paint();
+    }
   }
 
-  paint();
-  btn.addEventListener("click", toggle);
-  addEventListener("keydown", e => {
-    if (e.code === "Space" && !e.repeat && !/input|textarea/i.test(e.target.tagName)) {
-      e.preventDefault();
-      toggle();
+  async function syncAlwaysOn() {
+    try {
+      const result = await (await fetch("/api/voice/always-on")).json();
+      alwaysOn = result.active;
+      if (alwaysOn) hint.textContent = `say "${result.wake_word}" followed by a command`;
+      else if (result.error) hint.textContent = result.error;
+      paint();
+    } catch {
+      hint.textContent = "voice status unavailable";
+    }
+  }
+
+  btn.addEventListener("click", () => {
+    if (state === "idle") start();
+    else if (state === "recording") stop();
+  });
+  alwaysBtn.addEventListener("click", toggleAlwaysOn);
+  addEventListener("keydown", event => {
+    if (event.code === "Space" && !event.repeat && !/input|textarea|select/i.test(event.target.tagName)) {
+      event.preventDefault();
+      if (state === "idle") start();
+      else if (state === "recording") stop();
     }
   });
+  paint();
+  syncAlwaysOn();
 })();

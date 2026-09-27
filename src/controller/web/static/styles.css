@@ -275,6 +275,10 @@ h1 {
 
 /* ───────────── Top-bar actions button ───────────── */
 .top-actions { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.voice-controls { display: inline-flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+.voice-btn { white-space: nowrap; }
+.voice-btn.voice-active { color: var(--ok); border-color: rgba(46, 242, 164, .55); }
+.voice-hint { max-width: 240px; color: var(--muted); font-size: .7rem; }
 .btn-ghost {
   display: inline-flex; align-items: center; gap: .5rem;
   padding: .55rem 1rem; border-radius: 999px; cursor: pointer;
@@ -355,9 +359,34 @@ body.modal-open { overflow: hidden; }
 .act-foot { display: flex; justify-content: space-between; gap: .6rem; flex-wrap: wrap; margin-top: auto; padding-top: .5rem; border-top: 1px solid var(--line); font-size: .72rem; color: var(--muted); }
 .no-match { margin: 1rem 0 0; }
 
+.mapping-list { display: grid; gap: .6rem; overflow-y: auto; padding: .2rem .2rem .2rem 0; }
+.mapping-row {
+  display: grid; grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.5fr);
+  align-items: center; gap: 1rem; padding: .7rem .8rem; border: 1px solid var(--line);
+  border-radius: 12px; background: rgba(255, 255, 255, .03);
+}
+.mapping-name { color: var(--text); font-size: .85rem; }
+.mapping-select, .btn-primary {
+  color: var(--text); background: rgba(4, 6, 13, .75); border: 1px solid var(--line);
+  border-radius: 10px; padding: .65rem .75rem; font: .88rem var(--font-ui);
+}
+.mapping-select:focus-visible, .btn-primary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.mapping-select option { color: #111827; background: #fff; }
+.mapping-status { min-height: 1.2rem; font-size: .8rem; }
+.mapping-actions { display: flex; justify-content: flex-end; padding-top: .4rem; }
+.btn-primary {
+  cursor: pointer; color: #04121a; background: linear-gradient(135deg, var(--cyan), var(--violet));
+  border: 0; font-weight: 700;
+}
+.btn-primary:disabled { opacity: .55; cursor: wait; }
+.confirm-modal { max-width: 560px; }
+.confirm-modal h2 { margin: 0; font-size: 1.5rem; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: .7rem; margin-top: 1rem; }
+
 @media (max-width: 680px) {
   .modal-backdrop { padding: .6rem; align-items: end; }
   .modal { padding: 1.1rem; max-height: 92vh; }
   .act-grid { grid-template-columns: minmax(0, 1fr); }
+  .mapping-row { grid-template-columns: 1fr; gap: .5rem; }
 }
 .act[hidden], .act-group[hidden], .no-match[hidden] { display: none; }

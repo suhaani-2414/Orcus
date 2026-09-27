@@ -14,7 +14,53 @@ const ICONS = {
   gesture: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5v-7a1.5 1.5 0 0 1 3 0V12M14 11.5v-5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 7-6.5 7S5 18.5 4 16l-1.3-3a1.5 1.5 0 0 1 2.6-1.4L8 15"/></svg>',
   keyboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/></svg>',
 };
-const EXEC_CLASS = { success: "ok", error: "bad", unsupported: "warn", skipped: "" };
+const EXEC_CLASS = {
+  success: "ok", error: "bad", unsupported: "warn", skipped: "",
+  pending: "warn", confirmation_required: "warn", cancelled: "warn",
+};
+let pendingConfirmationEvent = null;
+
+function requestConfirmation(event) {
+  pendingConfirmationEvent = event;
+  window.pendingConfirmationEvent = event;
+  const modal = $("confirmModal");
+  const description = $("confirmDescription");
+  const proceed = $("confirmProceed");
+  const cancel = $("confirmCancel");
+  if (!modal || !description || !proceed || !cancel) return;
+
+  description.textContent =
+    `${String(event.decision || "This action").replace(/_/g, " ")} requires your confirmation.`;
+  modal.hidden = false;
+  modal.classList.add("show");
+
+  const answer = async confirmed => {
+    proceed.disabled = cancel.disabled = true;
+    try {
+      const response = await fetch("/api/confirm", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({confirmed}),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        description.textContent = result.detail || "Confirmation failed; the action was not executed.";
+        return;
+      }
+      pendingConfirmationEvent = null;
+      window.pendingConfirmationEvent = null;
+      modal.classList.remove("show");
+      setTimeout(() => { modal.hidden = true; }, 180);
+    } catch {
+      description.textContent = "Could not reach the controller; the action was not executed.";
+    } finally {
+      proceed.disabled = cancel.disabled = false;
+    }
+  };
+  proceed.onclick = () => answer(true);
+  cancel.onclick = () => answer(false);
+  proceed.focus();
+}
 
 // ───────────── helpers ─────────────
 function rawText(raw) {
@@ -69,6 +115,9 @@ function stageStates(e) {
   let policy = ["", "skipped"];
   if (e.policy === "allowed") policy = ["ok", "allowed"];
   else if (e.policy && e.policy.startsWith("denied")) policy = ["bad", "denied"];
+  else if (e.policy && e.policy.includes("requires confirmation")) {
+    policy = ["warn", "confirm"];
+  }
   const execCls = EXEC_CLASS[e.execution] ?? "";
   return { input: ["ok", e.input_type], laya, policy, exec: [execCls, e.execution || "—"] };
 }
@@ -130,6 +179,10 @@ function renderCurrent(e) {
   ex.textContent = e.execution || "—";
   ex.className = "exec " + (EXEC_CLASS[e.execution] ?? "");
   $("policy").textContent = e.policy ? `policy › ${e.policy}` : "";
+  if (e.execution === "pending" && e.policy && e.policy.includes("requires confirmation")
+      ) {
+    requestConfirmation(e);
+  }
 
   renderPipeline(e);
   document.querySelectorAll("main .panel").forEach(flash);
@@ -162,6 +215,8 @@ function renderStats(e) {
 // Short outcome label for the log badge: why it ran or didn't.
 function outcome(e) {
   if (e.execution === "success") return ["ok", "done"];
+  if (e.execution === "pending") return ["warn", "confirm"];
+  if (e.execution === "cancelled") return ["warn", "cancelled"];
   if (e.policy === "no_intent") return ["warn", "no match"];
   if (e.policy && e.policy.startsWith("denied")) return ["bad", "denied"];
   return [EXEC_CLASS[e.execution] || "muted", e.execution || "—"];

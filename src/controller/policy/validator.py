@@ -31,6 +31,7 @@ def _deny(_intent: Intent, _spec: ActionSpec) -> bool:
 class PolicyDecision(BaseModel):
     allowed: bool
     reason: str
+    requires_confirmation: bool = False
     # Parameters re-validated/normalized by the action's model, when allowed.
     normalized_parameters: dict = {}
 
@@ -73,7 +74,10 @@ class PolicyEngine:
 
         if spec.destructive and not self.confirm(intent, spec):
             return PolicyDecision(
-                allowed=False, reason=f"destructive action '{intent.action}' not confirmed"
+                allowed=False,
+                reason=f"destructive action '{intent.action}' requires confirmation (not confirmed)",
+                requires_confirmation=True,
+                normalized_parameters=params.model_dump(),
             )
 
         return PolicyDecision(

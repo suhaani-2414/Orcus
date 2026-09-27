@@ -12,9 +12,13 @@ loads without the SDK or an API key present (tests use a fake recognizer).
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
+import time
+import wave
+from array import array
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 
@@ -83,6 +87,20 @@ class ScribeRecognizer(SpeechRecognizer):
             _record_wav(tmp.name, self.record_seconds)
             return self.transcribe(tmp.name)
 
+    def listen_chunk(self, seconds: float = 2.0) -> str:
+        """Record one short always-on window and transcribe it."""
+        path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+        try:
+            _record_wav(path, seconds)
+            if not _wav_has_audio(path):
+                return ""
+            return self.transcribe(path)
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
 
 class MicRecorder:
     """Start/stop mic recording for hold-to-talk: records until stopped, so the
@@ -145,3 +163,98 @@ class VoiceInput(InputSource):
                 yield VoiceEvent(text=text)
             else:
                 print("   (nothing transcribed)")
+
+
+def _wav_has_audio(path: str, threshold: int = 250) -> bool:
+    """Return whether a mono PCM WAV has enough energy to upload."""
+    try:
+        with wave.open(path, "rb") as wav:
+            while True:
+                frames = wav.readframes(4096)
+                if not frames:
+                    return False
+                samples = array("h")
+                samples.frombytes(frames[: len(frames) - (len(frames) % 2)])
+                if samples and max(abs(sample) for sample in samples) >= threshold:
+                    return True
+    except (OSError, EOFError, wave.Error):
+        return False
+
+
+class AlwaysOnVoiceInput(InputSource):
+    """Continuously listen for a wake phrase, then yield voice commands.
+
+    The recognizer must expose ``listen_chunk(seconds)``. Audio is never sent
+    to STT when the local RMS check detects silence. A command can be spoken as
+    ``"Orcus volume up"`` or in two steps: ``"Orcus"`` followed by the command
+    within ``activation_timeout`` seconds.
+    """
+
+    def __init__(
+        self,
+        recognizer,
+        *,
+        wake_phrases: tuple[str, ...] = ("orcus", "hey orcus"),
+        chunk_seconds: float = 2.0,
+        activation_timeout: float = 6.0,
+        on_status=None,
+    ):
+        if chunk_seconds <= 0:
+            raise ValueError("chunk_seconds must be positive")
+        if not wake_phrases or any(not phrase.strip() for phrase in wake_phrases):
+            raise ValueError("wake_phrases must contain non-empty phrases")
+        self.recognizer = recognizer
+        self.wake_phrases = tuple(phrase.strip().lower() for phrase in wake_phrases)
+        self.chunk_seconds = chunk_seconds
+        self.activation_timeout = activation_timeout
+        self.on_status = on_status or (lambda _message: None)
+        self._running = False
+        self._active_until = 0.0
+
+    def stop(self) -> None:
+        self._running = False
+
+    def _strip_wake_phrase(self, text: str) -> str | None:
+        normalized = re.sub(r"[^a-z0-9 ]+", " ", text.lower())
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        for phrase in sorted(self.wake_phrases, key=len, reverse=True):
+            if normalized == phrase:
+                return ""
+            if normalized.startswith(phrase + " "):
+                return normalized[len(phrase):].strip()
+        if "orcus" in self.wake_phrases:
+            for variant in ("orcas", "orkus", "orkus", "orcuss", "ocus"):
+                if normalized == variant:
+                    return ""
+                if normalized.startswith(variant + " "):
+                    return normalized[len(variant):].strip()
+        return None
+
+    def events(self) -> Iterator[Event]:
+        self._running = True
+        self.on_status(f"always-on listening; say {self.wake_phrases[0]!r}")
+        while self._running:
+            try:
+                text = self.recognizer.listen_chunk(self.chunk_seconds).strip()
+            except Exception as error:
+                self.on_status(f"voice retrying after error: {error}")
+                time.sleep(0.5)
+                continue
+            if not text:
+                continue
+
+            now = time.monotonic()
+            command = self._strip_wake_phrase(text)
+            if command is not None:
+                self._active_until = now + self.activation_timeout
+                if command:
+                    self.on_status(f"heard command: {command!r}")
+                    yield VoiceEvent(text=command)
+                else:
+                    self.on_status("activated; listening for a command")
+                continue
+
+            if now <= self._active_until:
+                self._active_until = 0.0
+                self.on_status(f"heard command: {text!r}")
+                yield VoiceEvent(text=text)

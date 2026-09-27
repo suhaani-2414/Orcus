@@ -27,6 +27,9 @@ class RuleBasedEngine(DecisionEngine):
         self.gesture_map = gesture_map
         self.keyboard_map = keyboard_map
 
+    def update_gesture_map(self, gesture_map: dict[str, str]) -> None:
+        self.gesture_map = dict(gesture_map)
+
     def decide(self, event: Event) -> Intent | None:
         if isinstance(event, GestureEvent):
             return self._from_gesture(event)

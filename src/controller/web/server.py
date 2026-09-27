@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -19,6 +20,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -34,6 +36,14 @@ _clients: set[WebSocket] = set()
 _latest: dict = {}
 # Recent entries, replayed to a newly opened tab so its event log isn't empty.
 _history: deque[dict] = deque(maxlen=25)
+
+
+class GestureMappingRequest(BaseModel):
+    mappings: dict[str, str | None]
+
+
+class ConfirmationRequest(BaseModel):
+    confirmed: bool
 
 
 class _DryRun(OSController):
@@ -116,6 +126,16 @@ async def _lifespan(app: FastAPI):
         threading.Thread(target=_gesture_worker, args=(loop, queue), daemon=True).start()
         print("gesture capture: on (swipe left/right)", flush=True)
 
+    if os.environ.get("ORCUS_ALWAYS_ON") == "1":
+        voice_status = await always_on_start()
+        if voice_status.get("active"):
+            print("always-on voice: on", flush=True)
+        else:
+            print(
+                f"always-on voice: unavailable ({voice_status.get('error', 'not started')})",
+                flush=True,
+            )
+
     yield
 
 
@@ -182,6 +202,106 @@ async def actions() -> dict:
     return {"threshold": threshold, "actions": items}
 
 
+@app.get("/api/gesture-mappings")
+async def gesture_mappings() -> dict:
+    from controller.actions.registry import REGISTRY
+    from controller.inputs.gesture_labels import MODEL_LABELS
+    from controller.main import load_config
+
+    config = load_config()
+    current = {
+        name: spec.get("action")
+        for name, spec in (config.get("gestures") or {}).items()
+        if name != "open_palm"
+    }
+    names = list(dict.fromkeys([
+        "swipe_left", "swipe_right", "swipe_up", "swipe_down",
+        *MODEL_LABELS.values(),
+        *current.keys(),
+    ]))
+    return {
+        "mappings": [{"gesture": name, "action": current.get(name)} for name in names],
+        "actions": [
+            {"name": spec.name, "description": spec.description}
+            for spec in REGISTRY.values()
+        ],
+    }
+
+
+@app.put("/api/gesture-mappings")
+async def update_gesture_mappings(request: GestureMappingRequest) -> dict:
+    from controller.actions.registry import REGISTRY
+    from controller.inputs.gesture_labels import MODEL_LABELS
+    from controller.main import CONFIG_PATH, load_config
+
+    known = {
+        "swipe_left", "swipe_right", "swipe_up", "swipe_down",
+        *MODEL_LABELS.values(),
+    }
+    unknown_gestures = set(request.mappings) - known
+    if unknown_gestures:
+        return {"ok": False, "error": f"unknown gestures: {sorted(unknown_gestures)}"}
+    invalid_actions = {
+        action for action in request.mappings.values()
+        if action and action not in REGISTRY
+    }
+    if invalid_actions:
+        return {"ok": False, "error": f"unknown actions: {sorted(invalid_actions)}"}
+
+    config = load_config()
+    mappings = {
+        gesture: {"action": action}
+        for gesture, action in request.mappings.items()
+        if action
+    }
+    config["gestures"] = mappings
+    temporary = CONFIG_PATH.with_suffix(".yaml.tmp")
+    import yaml
+
+    existing_text = CONFIG_PATH.read_text()
+    gesture_block = yaml.safe_dump({"gestures": mappings}, sort_keys=False).rstrip()
+    pattern = r"(?ms)^gestures:\n.*?(?=^# Keyboard key)"
+    if not re.search(pattern, existing_text):
+        return {"ok": False, "error": "could not locate the gestures section"}
+    updated_text = re.sub(
+        pattern,
+        f"{gesture_block}\n\n",
+        existing_text,
+    )
+    temporary.write_text(updated_text)
+    temporary.replace(CONFIG_PATH)
+
+    pipeline = _voice_pipeline
+    if pipeline is not None:
+        from controller.decision.composite import CompositeEngine
+        from controller.decision.rules import RuleBasedEngine
+
+        engines = (
+            pipeline.engine.engines
+            if isinstance(pipeline.engine, CompositeEngine)
+            else [pipeline.engine]
+        )
+        for engine in engines:
+            if isinstance(engine, RuleBasedEngine):
+                engine.update_gesture_map({
+                    gesture: action for gesture, action in request.mappings.items() if action
+                })
+                break
+    return {"ok": True, "mappings": config["gestures"]}
+
+
+@app.post("/api/confirm")
+async def confirm_action(request: ConfirmationRequest) -> dict:
+    pipeline = _get_voice_pipeline()
+    result = await asyncio.to_thread(pipeline.confirm_pending, request.confirmed)
+    entry = dict(_latest)
+    if entry:
+        _history.append(entry)
+        await _broadcast(entry)
+    return {"ok": result.status in {"success", "cancelled"}, "status": result.status,
+            "detail": result.detail}
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -201,6 +321,11 @@ async def ws(websocket: WebSocket) -> None:
 _voice_pipeline = None
 _recognizer = None
 _recorder = None
+_always_on_source = None
+_always_on_thread: threading.Thread | None = None
+_always_on_stop = threading.Event()
+_always_on_ready = threading.Event()
+_always_on_error: str | None = None
 
 
 def _voice_observer(entry: dict) -> None:
@@ -275,6 +400,79 @@ async def _transcribe_and_run(wav_path: str, record_secs: float) -> dict:
     _history.append(entry)
     await _broadcast(entry)
     return {"ok": True, "transcript": text}
+
+
+async def _handle_voice_event(event: VoiceEvent) -> None:
+    await asyncio.to_thread(_get_voice_pipeline().handle, event)
+    entry = dict(_latest)
+    _history.append(entry)
+    await _broadcast(entry)
+
+
+def _always_on_worker(loop: asyncio.AbstractEventLoop) -> None:
+    from controller.inputs.voice import AlwaysOnVoiceInput
+
+    global _always_on_source, _always_on_error
+    try:
+        source = AlwaysOnVoiceInput(
+            _get_recognizer(),
+            wake_phrases=(os.environ.get("ORCUS_WAKE_WORD", "orcus"),),
+            on_status=lambda message: print(f"voice: {message}", flush=True),
+        )
+        _always_on_source = source
+        _always_on_ready.set()
+        for event in source.events():
+            if _always_on_stop.is_set():
+                break
+            try:
+                future = asyncio.run_coroutine_threadsafe(_handle_voice_event(event), loop)
+                future.result()
+            except Exception as error:
+                # A single bad transcript/model response must not terminate
+                # continuous listening.
+                print(f"voice: command failed; continuing: {error}", flush=True)
+    except Exception as error:
+        _always_on_error = str(error)
+        _always_on_ready.set()
+        print(f"voice: always-on stopped: {error}", flush=True)
+    finally:
+        _always_on_source = None
+
+
+@app.get("/api/voice/always-on")
+async def always_on_status() -> dict:
+    return {"active": _always_on_thread is not None and _always_on_thread.is_alive(),
+            "wake_word": os.environ.get("ORCUS_WAKE_WORD", "orcus"),
+            "error": _always_on_error}
+
+
+@app.post("/api/voice/always-on/start")
+async def always_on_start() -> dict:
+    global _always_on_thread, _always_on_error
+    if _always_on_thread is not None and _always_on_thread.is_alive():
+        return await always_on_status()
+    try:
+        _get_recognizer()
+    except RuntimeError as error:
+        return {"active": False, "error": str(error)}
+    _always_on_stop.clear()
+    _always_on_ready.clear()
+    _always_on_error = None
+    loop = asyncio.get_running_loop()
+    _always_on_thread = threading.Thread(
+        target=_always_on_worker, args=(loop,), daemon=True, name="orcus-always-on-voice",
+    )
+    _always_on_thread.start()
+    await asyncio.to_thread(_always_on_ready.wait, 1.0)
+    return await always_on_status()
+
+
+@app.post("/api/voice/always-on/stop")
+async def always_on_stop() -> dict:
+    _always_on_stop.set()
+    if _always_on_source is not None:
+        _always_on_source.stop()
+    return {"active": False}
 
 
 # Hold-to-talk: /listen/start begins recording, /listen/stop ends it and runs

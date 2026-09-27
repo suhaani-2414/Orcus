@@ -28,9 +28,17 @@
       </div>
     </div>
     <div class="top-actions">
+      <div class="voice-controls" aria-label="Voice controls">
+        <button type="button" class="btn-ghost voice-btn" id="mic" aria-label="Click to start talking, click again to stop">🎤 Talk</button>
+        <button type="button" class="btn-ghost voice-btn" id="alwaysListen" aria-label="Start always-on wake word listening">◉ Always listen</button>
+        <span class="voice-hint mono" id="voiceHint" aria-live="polite"></span>
+      </div>
       <button type="button" class="btn-ghost" id="openActions" aria-haspopup="dialog" aria-controls="actionsModal">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         Actions
+      </button>
+      <button type="button" class="btn-ghost" id="openMappings" aria-haspopup="dialog" aria-controls="mappingsModal">
+        Gesture mappings
       </button>
       <div class="conn" id="conn">
         <span class="conn-dot" id="dot"></span>
@@ -149,9 +157,42 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <div class="modal-backdrop" id="mappingsModal" hidden>
+    <div class="modal panel mappings-modal" role="dialog" aria-modal="true" aria-labelledby="mappingsTitle">
+      <div class="modal-head">
+        <div>
+          <div class="panel-label"><span class="tick"></span>Gesture controls</div>
+          <h2 id="mappingsTitle">Map gestures to actions</h2>
+          <p class="modal-sub">Choose what each swipe or hand pose does. Changes are saved to the controller configuration immediately.</p>
+        </div>
+        <button type="button" class="modal-close" id="closeMappings" aria-label="Close gesture mappings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="mapping-status mono" id="mappingStatus" aria-live="polite"></div>
+      <div class="mapping-list" id="mappingList"><p class="muted mono">loading mappings…</p></div>
+      <div class="mapping-actions">
+        <button type="button" class="btn-primary" id="saveMappings">Save mappings</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="confirmModal" hidden>
+    <div class="modal panel confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="panel-label"><span class="tick"></span>Confirmation required</div>
+      <h2 id="confirmTitle">Proceed with this action?</h2>
+      <p class="modal-sub" id="confirmDescription"></p>
+      <div class="confirm-actions">
+        <button type="button" class="btn-primary" id="confirmProceed">Proceed</button>
+        <button type="button" class="btn-ghost" id="confirmCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=confirm1"></script>
   <script src="/static/voice.js"></script>
   <script src="/static/camera.js"></script>
   <script src="/static/actions.js"></script>
+  <script src="/static/mappings.js"></script>
 </body>
 </html>

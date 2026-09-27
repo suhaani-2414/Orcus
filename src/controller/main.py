@@ -88,9 +88,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Multimodal OS Controller (Stage 1)")
     parser.add_argument("--execute", action="store_true", help="run real OS actions")
     parser.add_argument(
-        "--input", choices=["demo", "gesture", "voice"], default="demo",
+        "--input", choices=["demo", "gesture", "voice", "always-on"], default="demo",
         help="demo = replay mock events; gesture = live webcam swipes; "
-        "voice = ElevenLabs Scribe push-to-talk",
+        "voice = ElevenLabs Scribe push-to-talk; always-on = wake-word listening",
+    )
+    parser.add_argument(
+        "--wake-word", default="Orcus",
+        help="wake phrase for always-on voice mode (default: Orcus)",
     )
     parser.add_argument(
         "--engine", choices=["rules", "laya"], default="rules",
@@ -124,6 +128,15 @@ def main() -> None:
 
         print("Voice mode (ElevenLabs Scribe). Speak a command after pressing Enter.\n")
         source = VoiceInput(ScribeRecognizer())
+    elif args.input == "always-on":
+        from controller.inputs.voice import AlwaysOnVoiceInput, ScribeRecognizer
+
+        print(f"Always-on voice mode. Say '{args.wake_word} <command>'. Press Ctrl+C to quit.\n")
+        source = AlwaysOnVoiceInput(
+            ScribeRecognizer(),
+            wake_phrases=(args.wake_word,),
+            on_status=lambda message: print(f"   {message}", flush=True),
+        )
     else:
         # The OUTLINE's first vertical slice, plus one of each other modality.
         source = MockInput([
@@ -136,7 +149,13 @@ def main() -> None:
 
     try:
         for event in source.events():
-            pipeline.handle(event)
+            result = pipeline.handle(event)
+            if result.status == "confirmation_required":
+                try:
+                    answer = input(f"{result.detail}. Proceed? [y/N] ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    answer = ""
+                pipeline.confirm_pending(answer in {"y", "yes"})
     except KeyboardInterrupt:
         print("\nstopped.")
 
