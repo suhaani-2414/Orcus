@@ -58,11 +58,13 @@ def _pcm_to_wav(pcm: bytes, path: str) -> None:
 
 
 def _record_endpointed(max_seconds: float, *, frame_ms: int = 100, silence_ms: int = 500,
-                       start_level: int = 500, pre_ms: int = 200) -> bytes | None:
+                       start_level: int = 1200, onset_frames: int = 2, min_ms: int = 500,
+                       pre_ms: int = 200) -> bytes | None:
     """Stream from the mic and return PCM of just the spoken utterance: begin
-    capturing on speech onset, stop after trailing silence. Much faster than a
-    fixed window ('orca mute' ~1.5s vs 4s). Returns None if arecord is missing
-    (caller falls back to a fixed recording), or b'' if no speech was heard."""
+    capturing after `onset_frames` of sustained speech (rejects clicks/laughs),
+    stop after trailing silence, and discard captures shorter than `min_ms`
+    (rejects noise blips that make STT hallucinate). Returns None if arecord is
+    missing (caller falls back to a fixed recording), or b'' if no speech."""
     if not shutil.which("arecord"):
         return None
     from collections import deque as _deque
@@ -73,11 +75,12 @@ def _record_endpointed(max_seconds: float, *, frame_ms: int = 100, silence_ms: i
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
     )
     frames: list[bytes] = []
-    pre = _deque(maxlen=max(1, pre_ms // frame_ms))  # keep a little pre-speech audio
+    pre = _deque(maxlen=max(onset_frames, pre_ms // frame_ms))
     started = False
-    silence = 0
+    onset = silence = 0
     max_frames = max(1, int(max_seconds * 1000 / frame_ms))
     silence_frames = max(1, silence_ms // frame_ms)
+    min_frames = max(1, min_ms // frame_ms)
     try:
         for _ in range(max_frames):
             buf = proc.stdout.read(frame_bytes)
@@ -88,7 +91,9 @@ def _record_endpointed(max_seconds: float, *, frame_ms: int = 100, silence_ms: i
             peak = max(abs(s) for s in samples) if samples else 0
             if not started:
                 pre.append(buf)
-                if peak >= start_level:
+                # Require sustained loudness, not a single transient (a click).
+                onset = onset + 1 if peak >= start_level else 0
+                if onset >= onset_frames:
                     started = True
                     frames.extend(pre)
                     pre.clear()
@@ -103,7 +108,9 @@ def _record_endpointed(max_seconds: float, *, frame_ms: int = 100, silence_ms: i
             proc.wait(timeout=1)
         except subprocess.TimeoutExpired:
             proc.kill()
-    return b"".join(frames) if started else b""
+    if not started or len(frames) < min_frames:
+        return b""  # nothing, or too short to be a real command
+    return b"".join(frames)
 
 
 class ScribeRecognizer(SpeechRecognizer):
@@ -275,7 +282,7 @@ class AlwaysOnVoiceInput(InputSource):
         self,
         recognizer,
         *,
-        wake_phrases: tuple[str, ...] = ("orca", "hey orca"),
+        wake_phrases: tuple[str, ...] = ("computer", "hey computer"),
         chunk_seconds: float = 4.0,  # fit "computer <command>" in one window
         activation_timeout: float = 8.0,
         on_status=None,

@@ -252,7 +252,7 @@ async def setup_status() -> dict:
         "voice_key_configured": bool(os.environ.get("ELEVENLABS_API_KEY")),
         "camera_index": (config.get("gesture_settings") or {}).get("camera_index", 0),
         "gesture_settings": config.get("gesture_settings") or {},
-        "wake_word": os.environ.get("ORCUS_WAKE_WORD", "orca"),
+        "wake_word": os.environ.get("ORCUS_WAKE_WORD", "computer"),
         "confirmation_timeout_seconds": config.get("confirmation_timeout_seconds", 30),
         "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
         "tts_enabled": os.environ.get("ORCUS_TTS", "1") != "0",
@@ -623,7 +623,7 @@ def _always_on_worker(loop: asyncio.AbstractEventLoop) -> None:
         try:
             source = AlwaysOnVoiceInput(
                 _get_recognizer(),
-                wake_phrases=(os.environ.get("ORCUS_WAKE_WORD", "orca"),),
+                wake_phrases=(os.environ.get("ORCUS_WAKE_WORD", "computer"),),
                 on_status=lambda message: print(f"voice: {message}", flush=True),
             )
             _always_on_source = source
@@ -647,7 +647,7 @@ def _always_on_worker(loop: asyncio.AbstractEventLoop) -> None:
 @app.get("/api/voice/always-on")
 async def always_on_status() -> dict:
     return {"active": _always_on_thread is not None and _always_on_thread.is_alive(),
-            "wake_word": os.environ.get("ORCUS_WAKE_WORD", "orca"),
+            "wake_word": os.environ.get("ORCUS_WAKE_WORD", "computer"),
             "error": _always_on_error}
 
 
