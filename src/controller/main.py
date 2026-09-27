@@ -44,17 +44,34 @@ def build_engine(config: dict, use_laya: bool):
     if not use_laya:
         return rules
 
+    import os
+
+    from controller.actions.registry import LAYA_TRAINED_ACTIONS
     from controller.decision.composite import CompositeEngine
     from controller.decision.laya import LayaDecisionEngine
     from controller.decision.laya_loader import FINETUNED_DIR, load_laya_client
+    from controller.decision.web_commands import WebCommandEngine
 
     # The fine-tuned checkpoint learned to abstain, so it can use the "none"
     # option; the zero-shot base over-picks "none", so it relies on the policy
-    # confidence threshold instead.
+    # confidence threshold instead. Pin Laya to its trained 15-action set so
+    # registry extras (web_search, open_url) don't disturb its calibration.
     finetuned = (FINETUNED_DIR / "model.safetensors").exists()
     print(f"Loading Laya ({'fine-tuned' if finetuned else 'base'})...")
-    laya = LayaDecisionEngine(load_laya_client(), allow_none=finetuned)
-    return CompositeEngine([laya, rules])
+    laya = LayaDecisionEngine(
+        load_laya_client(), actions=LAYA_TRAINED_ACTIONS, allow_none=finetuned
+    )
+
+    # Order = speed: regex web commands (instant) -> Laya (local) -> Gemini
+    # (flexible, only fires when the above abstain) -> rules (offline fallback).
+    engines = [WebCommandEngine(), laya]
+    if os.environ.get("GEMINI_API_KEY"):
+        from controller.decision.gemini import GeminiDecisionEngine
+
+        print("Gemini fallback: on")
+        engines.append(GeminiDecisionEngine())
+    engines.append(rules)
+    return CompositeEngine(engines)
 
 
 class DryRunController(OSController):

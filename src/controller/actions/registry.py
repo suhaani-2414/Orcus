@@ -52,6 +52,15 @@ class ResizeWindowParams(ActionParams):
     mode: str = Field(default="grow", pattern="^(grow|shrink)$")
 
 
+class WebSearchParams(ActionParams):
+    query: str = Field(min_length=1)
+    engine: str = Field(default="google", pattern="^(google|youtube)$")
+
+
+class OpenUrlParams(ActionParams):
+    url: str = Field(min_length=1)
+
+
 @dataclass(frozen=True)
 class ActionSpec:
     name: str
@@ -91,8 +100,21 @@ REGISTRY: dict[str, ActionSpec] = {
         _spec("volume_down", "Lower the volume", param_model=VolumeParams),
         _spec("mute", "Toggle mute"),
         _spec("lock_screen", "Lock the screen", destructive=True),
+        # Web skills — handled by WebCommandEngine (regex), NOT Laya. Kept out of
+        # Laya's choice set (see LAYA_TRAINED_ACTIONS) so its calibration on the
+        # original 15 is untouched.
+        _spec("web_search", "Search the web or a site", param_model=WebSearchParams),
+        _spec("open_url", "Open a URL in the browser", param_model=OpenUrlParams),
     ]
 }
+
+# The 15 actions Laya was fine-tuned on. Laya's choice question uses exactly this
+# set; new registry actions (web_search, open_url, …) are handled by other engines.
+LAYA_TRAINED_ACTIONS = [
+    "open_app", "close_app", "focus_window", "move_window", "resize_window",
+    "switch_workspace", "next_workspace", "previous_workspace", "play_pause",
+    "next_track", "previous_track", "volume_up", "volume_down", "mute", "lock_screen",
+]
 
 
 def get_action(name: str) -> ActionSpec | None:

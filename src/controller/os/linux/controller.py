@@ -23,6 +23,19 @@ def _subprocess_runner(argv: list[str]) -> tuple[int, str]:
     return proc.returncode, proc.stderr.strip()
 
 
+def _search_url(query: str, engine: str) -> str:
+    from urllib.parse import quote_plus
+
+    q = quote_plus(query)
+    if engine == "youtube":
+        return f"https://www.youtube.com/results?search_query={q}"
+    return f"https://www.google.com/search?q={q}"
+
+
+def _normalize_url(url: str) -> str:
+    return url if url.startswith(("http://", "https://")) else f"https://{url}"
+
+
 class LinuxController(OSController):
     platform = LINUX
 
@@ -56,6 +69,8 @@ class LinuxController(OSController):
                 "hyprctl", "dispatch", "resizeactive",
                 *(["100", "100"] if p.get("mode", "grow") == "grow" else ["-100", "-100"]),
             ],
+            "web_search": lambda p: ["xdg-open", _search_url(p["query"], p.get("engine", "google"))],
+            "open_url": lambda p: ["xdg-open", _normalize_url(p["url"])],
         }
 
     def execute(self, intent: Intent) -> ExecutionResult:
