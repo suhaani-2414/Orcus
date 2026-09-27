@@ -11,10 +11,10 @@
   let alwaysOn = false;
 
   function paint() {
-    btn.textContent = state === "recording" ? "● Stop recording"
-      : state === "busy" ? "… Transcribing" : "🎤 Talk";
+    btn.textContent = state === "recording" ? "Stop recording"
+      : state === "busy" ? "Transcribing…" : "Talk";
     btn.disabled = state === "busy";
-    alwaysBtn.textContent = alwaysOn ? "◉ Always listening — stop" : "◉ Always listen";
+    alwaysBtn.textContent = alwaysOn ? "Stop listening" : "Always listen";
     alwaysBtn.classList.toggle("voice-active", alwaysOn);
   }
 

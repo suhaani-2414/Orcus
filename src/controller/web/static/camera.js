@@ -6,7 +6,7 @@
 (function () {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.textContent = "📹 Camera";
+  btn.textContent = "Camera";
   btn.setAttribute("aria-label", "Show gesture camera");
   Object.assign(btn.style, {
     position: "fixed", left: "24px", bottom: "24px", zIndex: "60",
