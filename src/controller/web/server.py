@@ -69,10 +69,14 @@ def _gesture_worker(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> No
     from controller.inputs.gestures import GestureInput
 
     try:
+        print("gesture worker: opening camera…", flush=True)
         for event in GestureInput(show_window=False).events():
+            print(f"gesture: {event.name} ({event.confidence})", flush=True)
             loop.call_soon_threadsafe(queue.put_nowait, event)
     except Exception as e:
+        import traceback
         print(f"gesture capture stopped: {e}", flush=True)
+        traceback.print_exc()
 
 
 @asynccontextmanager

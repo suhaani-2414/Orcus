@@ -11,6 +11,7 @@ is decided by config + the decision layer, never here.
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Iterator
 
@@ -45,6 +46,8 @@ class GestureInput(InputSource):
         )
         detector = SwipeDetector()
         self._running = True
+        debug = os.environ.get("ORCUS_GESTURE_DEBUG") == "1"
+        frames = hands_seen = 0
         try:
             while self._running:
                 ok, frame = cap.read()
@@ -55,8 +58,10 @@ class GestureInput(InputSource):
                 rgb.flags.writeable = False
                 results = hands.process(rgb)
                 now = time.time()
+                frames += 1
 
                 if results.multi_hand_landmarks:
+                    hands_seen += 1
                     lm = results.multi_hand_landmarks[0].landmark
                     cx = (lm[0].x + lm[9].x) / 2.0  # wrist + middle-finger MCP
                     cy = (lm[0].y + lm[9].y) / 2.0
@@ -66,6 +71,9 @@ class GestureInput(InputSource):
                         yield GestureEvent(name=name, confidence=confidence)
                 else:
                     detector.mark_hand_lost(now)
+
+                if debug and frames % 30 == 0:
+                    print(f"gesture debug: frames={frames} hands_seen={hands_seen}", flush=True)
 
                 if self.show_window:
                     cv2.imshow("gesture input (q to quit)", frame)
