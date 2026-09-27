@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 import time
 from collections import deque
 from contextlib import asynccontextmanager
@@ -53,6 +54,27 @@ async def _broadcast(entry: dict) -> None:
         _clients.discard(ws)
 
 
+async def _gesture_consumer(queue: asyncio.Queue) -> None:
+    """Drain gesture events (from the camera thread) → pipeline → broadcast."""
+    while True:
+        event = await queue.get()
+        await asyncio.to_thread(_get_voice_pipeline().handle, event)
+        entry = dict(_latest)
+        _history.append(entry)
+        await _broadcast(entry)
+
+
+def _gesture_worker(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> None:
+    """Camera + MediaPipe swipe detection in a thread; hand events to the loop."""
+    from controller.inputs.gestures import GestureInput
+
+    try:
+        for event in GestureInput(show_window=False).events():
+            loop.call_soon_threadsafe(queue.put_nowait, event)
+    except Exception as e:
+        print(f"gesture capture stopped: {e}", flush=True)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Warm the model + STT client in the background so the FIRST command isn't a
@@ -65,6 +87,15 @@ async def _lifespan(app: FastAPI):
             print(f"preload skipped: {e}", flush=True)
 
     asyncio.create_task(_preload())
+
+    # Live gesture capture (webcam swipes) when ORCUS_GESTURE=1.
+    if os.environ.get("ORCUS_GESTURE") == "1":
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        asyncio.create_task(_gesture_consumer(queue))
+        threading.Thread(target=_gesture_worker, args=(loop, queue), daemon=True).start()
+        print("gesture capture: on (swipe left/right)", flush=True)
+
     yield
 
 
