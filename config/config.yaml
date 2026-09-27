@@ -15,6 +15,10 @@ gestures:
     action: previous_workspace
   swipe_right:
     action: next_workspace
+  swipe_up:
+    action: volume_up
+  swipe_down:
+    action: volume_down
   open_palm:
     action: play_pause
   fist:

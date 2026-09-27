@@ -35,8 +35,14 @@ def test_jitter_ignored():
     assert feed([(i * 0.05, 0.5 + 0.01 * (i % 2), 0.5) for i in range(6)]) is None
 
 
-def test_vertical_ignored():
-    assert feed([(i * 0.05, 0.5, 0.2 + 0.5 * i / 5) for i in range(6)]) is None
+def test_swipe_down_detected():
+    hit = feed([(i * 0.05, 0.5, 0.2 + 0.5 * i / 5) for i in range(6)])
+    assert hit is not None and hit[0] == "swipe_down"
+
+
+def test_swipe_up_detected():
+    hit = feed([(i * 0.05, 0.5, 0.8 - 0.5 * i / 5) for i in range(6)])
+    assert hit is not None and hit[0] == "swipe_up"
 
 
 def test_too_slow_ignored():

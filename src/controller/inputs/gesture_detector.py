@@ -16,8 +16,8 @@ from collections import deque
 # Tunables (see swipe_prototype.py for the rationale).
 WINDOW_SECONDS = 0.5
 MIN_TRAVEL = 0.22
-MAX_HORIZ_DURATION = 0.6
-MAX_VERTICAL_RATIO = 0.6
+MAX_DURATION = 0.6
+MAX_CROSS_RATIO = 0.6  # off-axis travel must stay below this * main-axis travel
 COOLDOWN_SECONDS = 0.7
 HAND_TIMEOUT = 0.3
 
@@ -56,25 +56,33 @@ class SwipeDetector:
         t1, x1, y1 = self.buffer[-1]
         dx, dy, dt = x1 - x0, y1 - y0, t1 - t0
 
-        if dt <= 0 or dt > MAX_HORIZ_DURATION:
+        if dt <= 0 or dt > MAX_DURATION:
             return None
-        if abs(dx) < MIN_TRAVEL:
+
+        # Pick the dominant axis; require enough travel on it and little off-axis.
+        if abs(dx) >= abs(dy):
+            main, cross = dx, dy
+            # Frame is mirrored (selfie view): moving right increases x.
+            name = "swipe_right" if dx > 0 else "swipe_left"
+        else:
+            main, cross = dy, dx
+            # y increases downward in frame coords.
+            name = "swipe_down" if dy > 0 else "swipe_up"
+
+        if abs(main) < MIN_TRAVEL:
             return None
-        if abs(dy) > MAX_VERTICAL_RATIO * abs(dx):
-            return None
+        if abs(cross) > MAX_CROSS_RATIO * abs(main):
+            return None  # too diagonal to be a clean directional swipe
 
         self.last_fire = t
         self.reset()
-        # Frame is mirrored (selfie view): hand moving to the user's right
-        # increases x, which reads as swipe_right.
-        name = "swipe_right" if dx > 0 else "swipe_left"
-        return name, _confidence(dx, dy)
+        return name, _confidence(main, cross)
 
 
-def _confidence(dx: float, dy: float) -> float:
+def _confidence(main: float, cross: float) -> float:
     """A defensible 0.7-0.99 score: cleaner (straighter, longer) swipes score
     higher. Stays >= 0.7 so a detected swipe clears the policy threshold."""
-    straightness = 1.0 - min(1.0, abs(dy) / max(abs(dx), 1e-6))
-    reach = min(1.0, abs(dx) / (2 * MIN_TRAVEL))
+    straightness = 1.0 - min(1.0, abs(cross) / max(abs(main), 1e-6))
+    reach = min(1.0, abs(main) / (2 * MIN_TRAVEL))
     score = 0.7 + 0.29 * (0.5 * straightness + 0.5 * reach)
     return round(min(0.99, score), 2)
