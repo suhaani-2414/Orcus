@@ -56,13 +56,28 @@ class GeminiDecisionEngine(DecisionEngine):
             self._client = genai.Client(api_key=self.api_key)
         return self._client
 
-    def _raw(self, prompt: str) -> str:
+    def _raw(self, prompt: str, as_json: bool = True) -> str:
+        config = {"temperature": 0}
+        if as_json:
+            config["response_mime_type"] = "application/json"
         resp = self._get_client().models.generate_content(
-            model=self.model,
-            contents=prompt,
-            config={"response_mime_type": "application/json", "temperature": 0},
+            model=self.model, contents=prompt, config=config,
         )
         return resp.text or ""
+
+    def resolve_url(self, name: str) -> str | None:
+        """Resolve a spoken website name to its canonical https URL (or None).
+        Used to learn new preferred sites on demand."""
+        prompt = (
+            "Return ONLY the canonical https:// URL for the website named "
+            f"'{name}'. If it is not a real website, reply exactly 'none'. "
+            "No prose, just the URL or 'none'."
+        )
+        try:
+            text = self._raw(prompt, as_json=False).strip().strip('"').split()[0]
+        except Exception:
+            return None
+        return text if text.startswith(("http://", "https://")) else None
 
     def decide(self, event: Event) -> Intent | None:
         if not isinstance(event, VoiceEvent):

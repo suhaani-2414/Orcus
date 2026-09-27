@@ -63,14 +63,26 @@ def build_engine(config: dict, use_laya: bool):
         load_laya_client(), actions=LAYA_TRAINED_ACTIONS, allow_none=finetuned
     )
 
-    # Order = speed: exact web commands -> deterministic common commands ->
-    # Laya for natural language -> optional Gemini fallback.
-    engines = [WebCommandEngine(), rules, laya]
+    from controller.sites import SiteStore
+
+    # One Gemini instance serves both URL resolution (learn new sites) and the
+    # natural-language fallback.
+    gemini = None
     if os.environ.get("GEMINI_API_KEY"):
         from controller.decision.gemini import GeminiDecisionEngine
 
+        gemini = GeminiDecisionEngine()
         print("Gemini fallback: on")
-        engines.append(GeminiDecisionEngine())
+
+    web = WebCommandEngine(
+        sites=SiteStore(), resolver=(gemini.resolve_url if gemini else None)
+    )
+
+    # Order = speed: exact web commands -> deterministic common commands ->
+    # Laya for natural language -> optional Gemini fallback.
+    engines = [web, rules, laya]
+    if gemini is not None:
+        engines.append(gemini)
     return CompositeEngine(engines)
 
 

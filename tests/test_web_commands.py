@@ -28,7 +28,30 @@ def test_search_for_google():
 
 def test_open_url_needs_a_domain():
     i = web().decide(VoiceEvent(text="open github.com"))
-    assert i.action == "open_url" and i.parameters == {"url": "github.com"}
+    assert i.action == "open_url" and i.parameters == {"url": "https://github.com"}
+
+
+def test_go_to_known_site_opens_url():
+    from controller.sites import SiteStore
+
+    i = WebCommandEngine(sites=SiteStore()).decide(VoiceEvent(text="go to youtube"))
+    assert i.action == "open_url" and "youtube.com" in i.parameters["url"]
+
+
+def test_go_to_workspace_defers_to_laya():
+    from controller.sites import SiteStore
+
+    assert WebCommandEngine(sites=SiteStore()).decide(VoiceEvent(text="go to workspace three")) is None
+
+
+def test_unknown_site_resolved_and_saved(tmp_path):
+    from controller.sites import SiteStore
+
+    store = SiteStore(path=tmp_path / "sites.json")
+    engine = WebCommandEngine(sites=store, resolver=lambda name: "https://news.ycombinator.com")
+    i = engine.decide(VoiceEvent(text="visit hacker noon"))
+    assert i.action == "open_url" and i.parameters["url"] == "https://news.ycombinator.com"
+    assert store.get("hacker noon") == "https://news.ycombinator.com"  # learned + saved
 
 
 def test_open_app_not_captured_as_url():

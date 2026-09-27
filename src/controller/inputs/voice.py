@@ -282,7 +282,7 @@ class AlwaysOnVoiceInput(InputSource):
         self,
         recognizer,
         *,
-        wake_phrases: tuple[str, ...] = ("computer", "hey computer"),
+        wake_phrases: tuple[str, ...] = ("orca", "hey orca"),
         chunk_seconds: float = 4.0,  # fit "computer <command>" in one window
         activation_timeout: float = 8.0,
         on_status=None,
@@ -310,12 +310,19 @@ class AlwaysOnVoiceInput(InputSource):
                 return ""
             if normalized.startswith(phrase + " "):
                 return normalized[len(phrase):].strip()
+        # Accept common STT mis-hearings of the wake word so a mangled transcript
+        # still activates ("orca" -> "or car", "or can", etc.).
+        variants = ()
         if "orcus" in self.wake_phrases:
-            for variant in ("orcas", "orkus", "orcus", "orcuss", "ocus", "orcos"):
-                if normalized == variant:
-                    return ""
-                if normalized.startswith(variant + " "):
-                    return normalized[len(variant):].strip()
+            variants = ("orcas", "orkus", "orcus", "orcuss", "ocus", "orcos")
+        elif "orca" in self.wake_phrases:
+            variants = ("orca", "orka", "arca", "orcah", "or car", "or ca",
+                        "or can", "or kar", "or ka", "orcas", "ourka")
+        for variant in variants:
+            if normalized == variant:
+                return ""
+            if normalized.startswith(variant + " "):
+                return normalized[len(variant):].strip()
         return None
 
     def events(self) -> Iterator[Event]:
