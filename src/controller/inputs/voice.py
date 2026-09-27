@@ -49,6 +49,63 @@ def _record_wav(path: str, seconds: float) -> None:
     subprocess.run(cmd, check=True)
 
 
+def _pcm_to_wav(pcm: bytes, path: str) -> None:
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(pcm)
+
+
+def _record_endpointed(max_seconds: float, *, frame_ms: int = 100, silence_ms: int = 500,
+                       start_level: int = 500, pre_ms: int = 200) -> bytes | None:
+    """Stream from the mic and return PCM of just the spoken utterance: begin
+    capturing on speech onset, stop after trailing silence. Much faster than a
+    fixed window ('orca mute' ~1.5s vs 4s). Returns None if arecord is missing
+    (caller falls back to a fixed recording), or b'' if no speech was heard."""
+    if not shutil.which("arecord"):
+        return None
+    from collections import deque as _deque
+
+    frame_bytes = int(16000 * frame_ms / 1000) * 2
+    proc = subprocess.Popen(
+        ["arecord", "-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "raw"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    )
+    frames: list[bytes] = []
+    pre = _deque(maxlen=max(1, pre_ms // frame_ms))  # keep a little pre-speech audio
+    started = False
+    silence = 0
+    max_frames = max(1, int(max_seconds * 1000 / frame_ms))
+    silence_frames = max(1, silence_ms // frame_ms)
+    try:
+        for _ in range(max_frames):
+            buf = proc.stdout.read(frame_bytes)
+            if len(buf) < frame_bytes:
+                break
+            samples = array("h")
+            samples.frombytes(buf)
+            peak = max(abs(s) for s in samples) if samples else 0
+            if not started:
+                pre.append(buf)
+                if peak >= start_level:
+                    started = True
+                    frames.extend(pre)
+                    pre.clear()
+            else:
+                frames.append(buf)
+                silence = silence + 1 if peak < start_level else 0
+                if silence >= silence_frames:
+                    break
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    return b"".join(frames) if started else b""
+
+
 class ScribeRecognizer(SpeechRecognizer):
     def __init__(self, api_key: str | None = None, record_seconds: float = 4.0,
                  language_code: str = "en"):
@@ -103,13 +160,21 @@ class ScribeRecognizer(SpeechRecognizer):
             _record_wav(tmp.name, self.record_seconds)
             return self.transcribe(tmp.name)
 
-    def listen_chunk(self, seconds: float = 2.0) -> str:
-        """Record one short always-on window and transcribe it."""
+    def listen_chunk(self, seconds: float = 4.0) -> str:
+        """Endpointed always-on capture: record only the spoken utterance (stops
+        on trailing silence, up to `seconds` max), then transcribe. Faster than a
+        fixed window and skips silence uploads."""
         path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
         try:
-            _record_wav(path, seconds)
-            if not _wav_has_audio(path):
+            pcm = _record_endpointed(seconds)
+            if pcm is None:  # no arecord -> fixed-window fallback
+                _record_wav(path, seconds)
+                if not _wav_has_audio(path):
+                    return ""
+                return self.transcribe(path)
+            if not pcm:
                 return ""
+            _pcm_to_wav(pcm, path)
             return self.transcribe(path)
         finally:
             try:
@@ -210,7 +275,7 @@ class AlwaysOnVoiceInput(InputSource):
         self,
         recognizer,
         *,
-        wake_phrases: tuple[str, ...] = ("computer", "hey computer"),
+        wake_phrases: tuple[str, ...] = ("orca", "hey orca"),
         chunk_seconds: float = 4.0,  # fit "computer <command>" in one window
         activation_timeout: float = 8.0,
         on_status=None,
