@@ -148,7 +148,11 @@ async def _transcribe_and_run(wav_path: str, record_secs: float) -> dict:
     """Shared tail: transcribe a WAV, run Laya, broadcast. Times each stage."""
     recognizer = _get_recognizer()
     t1 = time.time()
-    text = await asyncio.to_thread(recognizer.transcribe, wav_path)
+    try:
+        text = await asyncio.to_thread(recognizer.transcribe, wav_path)
+    except Exception as e:  # Scribe rejected the audio, network error, etc.
+        print(f"voice: scribe error: {e}", flush=True)
+        text = ""
     t2 = time.time()
     try:
         os.remove(wav_path)
@@ -184,6 +188,18 @@ async def listen_start() -> dict:
     return {"ok": True}
 
 
+def _wav_duration(path: str) -> float:
+    """Seconds of audio in a WAV, or 0.0 if unreadable/empty/corrupt."""
+    import contextlib
+    import wave
+
+    try:
+        with contextlib.closing(wave.open(path)) as w:
+            return w.getnframes() / float(w.getframerate() or 1)
+    except Exception:
+        return 0.0
+
+
 @app.post("/listen/stop")
 async def listen_stop() -> dict:
     try:
@@ -194,6 +210,15 @@ async def listen_stop() -> dict:
     wav = await asyncio.to_thread(_get_recorder().stop)
     if not wav:
         return {"ok": False, "error": "not recording"}
+
+    # A too-short/empty clip is "corrupted" to Scribe (400) — reject it cleanly.
+    if _wav_duration(wav) < 0.3:
+        try:
+            os.remove(wav)
+        except OSError:
+            pass
+        return {"ok": False, "error": "too short — hold the button while you speak"}
+
     return await _transcribe_and_run(wav, time.time() - _record_started_at)
 
 
