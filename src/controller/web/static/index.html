@@ -27,11 +27,17 @@
         <p class="tagline">Hands-free control · voice · gesture · keys</p>
       </div>
     </div>
-    <div class="conn" id="conn">
-      <span class="conn-dot" id="dot"></span>
-      <span id="status">Connecting…</span>
-      <span class="conn-sep">/</span>
-      <span id="platform" class="mono">—</span>
+    <div class="top-actions">
+      <button type="button" class="btn-ghost" id="openActions" aria-haspopup="dialog" aria-controls="actionsModal">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        Actions
+      </button>
+      <div class="conn" id="conn">
+        <span class="conn-dot" id="dot"></span>
+        <span id="status">Connecting…</span>
+        <span class="conn-sep">/</span>
+        <span id="platform" class="mono">—</span>
+      </div>
     </div>
   </header>
 
@@ -120,7 +126,31 @@
 
   <footer class="foot mono">spoken feedback on · live via websocket</footer>
 
+  <!-- Actions modal: the full action vocabulary, filled from /api/actions -->
+  <div class="modal-backdrop" id="actionsModal" hidden>
+    <div class="modal panel" role="dialog" aria-modal="true" aria-labelledby="actionsTitle" aria-describedby="actionsSub">
+      <div class="modal-head">
+        <div>
+          <div class="panel-label"><span class="tick"></span>Action vocabulary</div>
+          <h2 id="actionsTitle">What Orcus can do</h2>
+          <p class="modal-sub" id="actionsSub">Laya can only choose from these actions. Anything else is rejected before it reaches your computer.</p>
+        </div>
+        <button type="button" class="modal-close" id="closeActions" aria-label="Close actions">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="modal-tools">
+        <input type="search" id="actionSearch" class="search mono" placeholder="Search actions, gestures or phrases…" aria-label="Search actions" autocomplete="off" />
+        <div class="modal-meta mono" id="actionsMeta"></div>
+      </div>
+      <div class="modal-body" id="actionsBody">
+        <p class="muted mono">loading actions…</p>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/app.js"></script>
   <script src="/static/voice.js"></script>
+  <script src="/static/actions.js"></script>
 </body>
 </html>
