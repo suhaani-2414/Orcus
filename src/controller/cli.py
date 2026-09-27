@@ -40,27 +40,16 @@ def _acquire_instance_lock() -> bool:
 
 
 def _open_dashboard(url: str) -> None:
-    """Open the dashboard in Opera when installed, otherwise use the default."""
-    opera_candidates = (
-        "opera",
-        "opera-stable",
-        "opera-beta",
-        "opera-developer",
-        "/Applications/Opera.app/Contents/MacOS/Opera",
-    )
-    executable = next(
-        (candidate for candidate in opera_candidates
-         if Path(candidate).is_file() or shutil.which(candidate)),
-        None,
-    )
-    if executable is not None:
-        browser = webbrowser.BackgroundBrowser(executable)
-        if browser.open(url):
-            print("Opened Orcus in Opera.")
-            return
-
-    webbrowser.open(url)
-    print("Opera was not found; opened Orcus in the default browser.")
+    """Open the dashboard in the system default browser, reusing an existing
+    window/tab (new=0) so repeat launches don't spawn extra browser windows."""
+    if os.environ.get("ORCUS_NO_BROWSER") == "1":
+        print(f"Orcus dashboard: {url}")
+        return
+    try:
+        webbrowser.open(url, new=0, autoraise=True)
+    except Exception:
+        pass
+    print(f"Orcus dashboard: {url}")
 
 
 def _port_is_open(host: str, port: int) -> bool:

@@ -34,10 +34,8 @@ gestures:
     action: volume_up
   swipe_down:
     action: volume_down
-  four_fingers:
-    action: lock_screen
   fist:
-    action: mute
+    action: lock_screen
   thumbs_up:
     action: volume_up
   thumbs_down:
