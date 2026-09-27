@@ -64,13 +64,29 @@ async def _gesture_consumer(queue: asyncio.Queue) -> None:
         await _broadcast(entry)
 
 
+_latest_frame: bytes | None = None  # latest camera JPEG for the preview
+
+
+def _frame_sink(frame) -> None:
+    """Store the latest annotated frame as JPEG for the /camera preview."""
+    global _latest_frame
+    import cv2
+
+    h, w = frame.shape[:2]
+    if w > 480:  # downscale to keep encode/stream light
+        frame = cv2.resize(frame, (480, int(480 * h / w)))
+    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    if ok:
+        _latest_frame = buf.tobytes()
+
+
 def _gesture_worker(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue) -> None:
     """Camera + MediaPipe swipe detection in a thread; hand events to the loop."""
     from controller.inputs.gestures import GestureInput
 
     try:
         print("gesture worker: opening camera…", flush=True)
-        for event in GestureInput(show_window=False).events():
+        for event in GestureInput(show_window=False, frame_sink=_frame_sink).events():
             print(f"gesture: {event.name} ({event.confidence})", flush=True)
             loop.call_soon_threadsafe(queue.put_nowait, event)
     except Exception as e:
@@ -110,6 +126,22 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/camera")
+async def camera():
+    """MJPEG stream of the gesture camera (with hand landmarks). Only produces
+    frames when gesture capture is running (ORCUS_GESTURE=1)."""
+    from fastapi.responses import StreamingResponse
+
+    async def frames():
+        boundary = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+        while True:
+            if _latest_frame is not None:
+                yield boundary + _latest_frame + b"\r\n"
+            await asyncio.sleep(1 / 15)  # ~15 fps cap
+
+    return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.get("/api/actions")

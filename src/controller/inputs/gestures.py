@@ -21,9 +21,12 @@ from controller.inputs.gesture_detector import SwipeDetector
 
 
 class GestureInput(InputSource):
-    def __init__(self, camera_index: int = 0, show_window: bool = True):
+    def __init__(self, camera_index: int = 0, show_window: bool = True, frame_sink=None):
         self.camera_index = camera_index
         self.show_window = show_window
+        # Optional callback(frame_bgr) called each frame (with landmarks drawn) —
+        # used to stream a live preview without opening the camera twice.
+        self.frame_sink = frame_sink
         self._running = False
 
     def stop(self) -> None:
@@ -34,6 +37,7 @@ class GestureInput(InputSource):
         import mediapipe as mp
 
         mp_hands = mp.solutions.hands
+        mp_drawing = mp.solutions.drawing_utils
         cap = cv2.VideoCapture(self.camera_index)
         if not cap.isOpened():
             raise RuntimeError(f"failed to open camera {self.camera_index}")
@@ -74,6 +78,13 @@ class GestureInput(InputSource):
 
                 if debug and frames % 30 == 0:
                     print(f"gesture debug: frames={frames} hands_seen={hands_seen}", flush=True)
+
+                if self.frame_sink is not None:
+                    if results.multi_hand_landmarks:
+                        mp_drawing.draw_landmarks(
+                            frame, results.multi_hand_landmarks[0], mp_hands.HAND_CONNECTIONS
+                        )
+                    self.frame_sink(frame)
 
                 if self.show_window:
                     cv2.imshow("gesture input (q to quit)", frame)
