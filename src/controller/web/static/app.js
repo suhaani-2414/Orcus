@@ -4,7 +4,7 @@
 //     confidence, policy, execution }
 // On connect the server may also send { kind: "history", entries: [...] }.
 
-const PASS = 0.70;               // mirrors min_confidence in config/config.yaml
+const PASS = 0.50;               // mirrors min_confidence in config/config.yaml
 const RING_LEN = 2 * Math.PI * 52;
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = id => document.getElementById(id);

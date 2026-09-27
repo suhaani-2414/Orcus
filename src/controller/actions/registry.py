@@ -49,7 +49,10 @@ class ActionSpec:
     name: str
     description: str
     param_model: type[ActionParams] = NoParams
-    min_confidence: float = 0.7
+    # Fine-tuned Laya abstains ("none") on unrelated speech, so that — not this
+    # threshold — is the main garbage filter. Keep this lenient so valid commands
+    # (switch_workspace lands ~0.57–0.76) aren't falsely denied.
+    min_confidence: float = 0.5
     supported_platforms: frozenset[str] = ALL_PLATFORMS
     destructive: bool = False
 
