@@ -180,10 +180,7 @@ async def _lifespan(app: FastAPI):
         print("gesture capture: on (swipe left/right)", flush=True)
 
     if os.environ.get("ORCUS_ALWAYS_ON") == "1":
-        global _voice_queue, _voice_consumer_task
-        _voice_queue = asyncio.Queue(maxsize=8)
-        _voice_consumer_task = asyncio.create_task(_voice_command_consumer(_voice_queue))
-        voice_status = await always_on_start()
+        voice_status = await always_on_start()  # creates the queue+consumer itself
         if voice_status.get("active"):
             print("always-on voice: on", flush=True)
         else:
@@ -599,6 +596,16 @@ async def _voice_command_consumer(queue: asyncio.Queue) -> None:
             queue.task_done()
 
 
+def _ensure_voice_consumer() -> None:
+    """Create the voice queue + consumer on the running loop if missing. Needed
+    because always-on can be started by the UI button, not just ORCUS_ALWAYS_ON."""
+    global _voice_queue, _voice_consumer_task
+    if _voice_queue is None:
+        _voice_queue = asyncio.Queue(maxsize=8)
+    if _voice_consumer_task is None or _voice_consumer_task.done():
+        _voice_consumer_task = asyncio.create_task(_voice_command_consumer(_voice_queue))
+
+
 def _enqueue_voice_event(event: VoiceEvent) -> None:
     if _voice_queue is None:
         return
@@ -654,6 +661,7 @@ async def always_on_start() -> dict:
     except RuntimeError as error:
         _set_runtime("voice", state="error", error=str(error))
         return {"active": False, "error": str(error)}
+    _ensure_voice_consumer()  # so button-started always-on actually runs commands
     _always_on_stop.clear()
     _always_on_ready.clear()
     _always_on_error = None
